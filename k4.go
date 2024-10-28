@@ -191,6 +191,9 @@ func (k4 *K4) Close() error {
 	// wait for the wal writer to finish
 	close(k4.exit)
 
+	// wait for the background wal writer to finish
+	k4.wg.Wait()
+
 	if k4.memtable.Size() > 0 {
 		k4.printLog(fmt.Sprintf("Memtable is of size %d bytes and must be flushed to disk", k4.memtable.Size()))
 		err := k4.flushMemtable()
@@ -253,7 +256,11 @@ func (k4 *K4) backgroundWalWriter() {
 				k4.walQueue = k4.walQueue[1:]
 				k4.walQueueLock.Unlock()
 
-				err := k4.WriteToWAL(op.op, op.key, op.value)
+				// Serialize operation
+				data := SerializeOp(op.op, op.key, op.value)
+
+				// Write to WAL
+				_, err := k4.wal.Write(data)
 				if err != nil {
 					k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err))
 				}

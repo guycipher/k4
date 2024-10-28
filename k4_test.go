@@ -34,7 +34,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -366,4 +368,69 @@ func TestPutGet2(t *testing.T) {
 	if !bytes.Equal([]byte(fmt.Sprintf("value%d", 999999)), got) {
 		t.Fatalf("Expected value %s, got %s", fmt.Sprintf("value%d", 999999), got)
 	}
+}
+
+func TestWALRecovery(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+
+	key := []byte("key1")
+	value := []byte("value1")
+
+	err = k4.Put(key, value, nil)
+	if err != nil {
+		k4.Close()
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	k4.Close()
+
+	// Closing flushes sstables, lets delete them
+
+	// open directory and delete all files that end with SSTable extension
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("Failed to read dir: %v", err)
+	}
+
+	for _, file := range files {
+		log.Println(file.Name())
+		if file.IsDir() {
+			continue
+		}
+		if strings.HasSuffix(file.Name(), ".sst") {
+			err = os.Remove(dir + string(os.PathSeparator) + file.Name())
+
+		}
+
+	}
+
+	k4, err = Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to reopen K4: %v", err)
+	}
+
+	err = k4.RecoverFromWAL()
+	if err != nil {
+		k4.Close()
+		t.Fatalf("Failed to recover from WAL: %v", err)
+	}
+
+	got, err := k4.Get(key)
+	if err != nil {
+		k4.Close()
+		t.Fatalf("Failed to get key: %v", err)
+	}
+
+	if !bytes.Equal(got, value) {
+		k4.Close()
+		t.Fatalf("Expected value %s, got %s", value, got)
+	}
+
+	k4.Close()
 }
