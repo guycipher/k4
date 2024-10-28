@@ -14,6 +14,7 @@ PASS
 ```
 
 ### Features
+- Variable length binary keys and values
 - Write-Ahead Logging (WAL)
 - Atomic transactions
 - Paired Compaction
