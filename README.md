@@ -3,14 +3,12 @@ High performance transactional, durable embedded key value store. Designed to de
 
 ### Benchmarks
 ```
-___BenchmarkLSMTree_Put_in_lsmtree.test -test.v -test.paniconexit0 -test.bench ^\QBenchmarkLSMTree_Put\E$ -test.run ^$
 goos: linux
 goarch: amd64
-pkg: lsmtree
+pkg: github.com/guycipher/k4
 cpu: 11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz
-BenchmarkLSMTree_Put
-BenchmarkLSMTree_Put-16    	  137502	      8576 ns/op
-PASS
+BenchmarkK4_Put
+BenchmarkK4_Put-16    	  131302	      8762 ns/op
 ```
 
 ### Features
