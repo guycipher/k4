@@ -264,7 +264,6 @@ func (k4 *K4) backgroundWalWriter() {
 				if err != nil {
 					k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err))
 				}
-
 			} else {
 				k4.walQueueLock.Unlock()
 			}
@@ -531,7 +530,7 @@ func (it *SSTableIterator) CurrentKey() []byte {
 func NewWALIterator(pager *pager.Pager) *WALIterator {
 	return &WALIterator{
 		pager:       pager,
-		currentPage: 1,
+		currentPage: 0,
 		lastPage:    int(pager.Count() - 1),
 	}
 }
@@ -702,7 +701,7 @@ func (k4 *K4) RecoverFromWAL() error {
 
 }
 
-// WriteToWAL writes an operation to the write ahead log
+// WriteToWAL writes an operation to the write ahead log queue
 func (k4 *K4) WriteToWAL(op OPR_CODE, key, value []byte) error {
 	operation := &Operation{
 		op:    op,
