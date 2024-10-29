@@ -146,7 +146,7 @@ if err != nil {
 
 ```
 
-### Configuration reccomendations
+### Configuration recommendations
 
 It is advisable to configure the memtable flush threshold and compaction interval in accordance with your application's specific requirements. A minimum memtable flush size of 50-256 MB is suggested.
 
