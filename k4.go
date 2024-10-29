@@ -1057,7 +1057,9 @@ func (k4 *K4) NGet(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if !bytes.Equal(k, key) && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				result[string(k)] = value
+				if _, exists := result[string(k)]; !exists {
+					result[string(k)] = value
+				}
 			}
 		}
 	}
@@ -1094,7 +1096,9 @@ func (k4 *K4) GreaterThan(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) > 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				result[string(k)] = value
+				if _, exists := result[string(k)]; !exists {
+					result[string(k)] = value
+				}
 			}
 		}
 	}
@@ -1131,7 +1135,9 @@ func (k4 *K4) GreaterThanEq(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) >= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				result[string(k)] = value
+				if _, exists := result[string(k)]; !exists {
+					result[string(k)] = value
+				}
 			}
 		}
 	}
@@ -1168,7 +1174,9 @@ func (k4 *K4) LessThan(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				result[string(k)] = value
+				if _, exists := result[string(k)]; !exists {
+					result[string(k)] = value
+				}
 			}
 		}
 	}
@@ -1205,7 +1213,9 @@ func (k4 *K4) LessThanEq(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) <= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				result[string(k)] = value
+				if _, exists := result[string(k)]; !exists {
+					result[string(k)] = value
+				}
 			}
 		}
 	}
@@ -1245,7 +1255,9 @@ func (k4 *K4) Range(startKey, endKey []byte) (map[string][]byte, error) {
 			key, value := it.current()
 			if bytes.Compare(key, startKey) >= 0 && bytes.Compare(key, endKey) <= 0 {
 				if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-					result[string(key)] = value
+					if _, exists := result[string(key)]; !exists {
+						result[string(key)] = value
+					}
 				}
 			}
 		}
@@ -1286,7 +1298,9 @@ func (k4 *K4) NRange(startKey, endKey []byte) (map[string][]byte, error) {
 			key, value := it.current()
 			if bytes.Compare(key, startKey) < 0 || bytes.Compare(key, endKey) > 0 {
 				if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-					result[string(key)] = value
+					if _, exists := result[string(key)]; !exists {
+						result[string(key)] = value
+					}
 				}
 			}
 		}
