@@ -209,7 +209,7 @@ func (k4 *K4) RecoverFromWAL() error
 ```
 
 ### Reporting bugs
-If you find a bug with K4 create an issue on this repository.
+If you find a bug with K4 create an issue on this repository but please do not include any sensitive information in the issue.  If you have a security concern please follow SECURITY.md.
 
 ### Contributing
 This repository for the K4 project welcomes contributions.  Before submitting a pull request (PR), please ensure you have reviewed and adhered to our guidelines outlined in SECURITY.md and CODE_OF_CONDUCT.md.
