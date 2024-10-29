@@ -146,6 +146,14 @@ if err != nil {
 
 ```
 
+### Configuration reccomendations
+
+It is advisable to configure the memtable flush threshold and compaction interval in accordance with your application's specific requirements. A minimum memtable flush size of 50-256 MB is suggested.
+
+Regarding compaction, a compaction interval of 1-6 hours is recommended, contingent upon storage usage and activity patterns.
+
+```go
+
 ### API
 ```go
 
