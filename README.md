@@ -1,5 +1,5 @@
 <div>
-    <h1 align="center"><img width="188" src="graphics/k4.png"></h1>
+    <h1 align="left"><img width="128" src="graphics/k4.png"></h1>
 </div>
 
 High performance transactional, durable embedded storage engine. Designed to deliver low-latency, optimized read and write performance.
