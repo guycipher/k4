@@ -19,16 +19,17 @@ RocksDB vs K4
 ### Features
 - High speed writes and reads
 - Durability
-- Variable length binary keys and values
-- Write-Ahead Logging (WAL)
-- Atomic transactions
-- Paired compaction
-- Memtable implemented as a skip list
-- Disk-based storage
+- Variable length binary keys and values.  Keys and their values can be any length
+- Write-Ahead Logging (WAL).  System writes PUT and DELETE operations to a log file before applying them to the LSM tree.
+- Atomic transactions.  Multiple PUT and DELETE operations can be grouped together and applied atomically to the LSM tree.
+- Paired compaction and merge operations.  The system merges multiple SSTables into fewer ones, reducing file count and minimizing disk I/O for read operations. Additionally, the system maintains a minimum number of SSTables to further optimize read performance.
+- Memtable implemented as a skip list.
+- In-memory and disk-based storage
 - Configurable memtable flush threshold
 - Configurable compaction interval (in seconds)
 - Configurable logging
-- Bloom filter for faster lookups
+- Configurable skip list
+- Bloom filter for faster lookups.  SSTable initial pages contain a bloom filter.  The system uses the bloom filter to determine if a key is in the SSTable before scanning the SSTable.
 - Recovery from WAL
 - Granular page locking
 - Thread-safe
