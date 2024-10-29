@@ -80,9 +80,9 @@ type SSTable struct {
 
 // Transaction is the structure for the transactions
 type Transaction struct {
-	id   int64        // Unique identifier for the transaction
-	ops  []*Operation // List of operations in the transaction
-	lock *sync.RWMutex
+	id   int64         // Unique identifier for the transaction
+	ops  []*Operation  // List of operations in the transaction
+	lock *sync.RWMutex // The lock for the transaction
 }
 
 // Operation Used for transaction operations and WAL
