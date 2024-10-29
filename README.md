@@ -22,7 +22,7 @@ RocksDB vs K4
 - Variable length binary keys and values.  Keys and their values can be any length
 - Write-Ahead Logging (WAL).  System writes PUT and DELETE operations to a log file before applying them to the LSM tree.
 - Atomic transactions.  Multiple PUT and DELETE operations can be grouped together and applied atomically to the LSM tree.
-- Paired compaction and merge operations.  The system merges multiple SSTables into fewer ones, reducing file count and minimizing disk I/O for read operations. Additionally, the system maintains a minimum number of SSTables to further optimize read performance.
+- Paired compaction.  SSTables are paired up during compaction and merged into a single SSTable.  This reduces the number of SSTables and minimizes disk I/O for read operations.
 - Memtable implemented as a skip list.
 - In-memory and disk-based storage
 - Configurable memtable flush threshold

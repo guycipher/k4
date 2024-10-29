@@ -605,8 +605,7 @@ func (k4 *K4) compact() error {
 
 	k4.printLog("Starting compaction")
 
-	// we do a pairwise merge of the sstables
-	// what this means is that we will merge the first sstable with the second sstable and so on
+	// we merge the first sstable with the second sstable and so on
 	// each merge creates a new sstable, removing the former sstables
 
 	// we will figure out how many pairs we can make
