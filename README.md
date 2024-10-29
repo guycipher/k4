@@ -126,6 +126,8 @@ func main() {
 ```
 
 ### TTL
+TTL (time to live) when putting a key-value pair you can specify a time duration after which the key-value pair will be deleted.
+The system will mark the key with a tombstone and delete it during compaction.
 ```go
 key := []byte("key")
 value := []byte("value")
