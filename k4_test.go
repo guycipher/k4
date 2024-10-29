@@ -706,3 +706,39 @@ func TestNRange(t *testing.T) {
 		t.Fatalf("Expected key1 with value1 and key4 with value4, got %v", result)
 	}
 }
+
+func TestReopen(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+
+	key := []byte("key1")
+	value := []byte("value1")
+
+	err = k4.Put(key, value, nil)
+	if err != nil {
+		k4.Close()
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	k4.Close()
+
+	k4, err = Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to reopen K4: %v", err)
+	}
+	defer k4.Close()
+
+	got, err := k4.Get(key)
+	if err != nil {
+		t.Fatalf("Failed to get key: %v", err)
+	}
+
+	if !bytes.Equal(got, value) {
+		t.Fatalf("Expected value %s, got %s", value, got)
+	}
+}
