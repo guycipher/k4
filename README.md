@@ -1,5 +1,5 @@
 # k4
-High performance transactional, durable embedded key value store. Designed to deliver low-latency, optimized read and write performance.
+High performance transactional, durable embedded storage engine. Designed to deliver low-latency, optimized read and write performance.
 
 ### Benchmarks
 ```
