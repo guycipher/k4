@@ -12,8 +12,8 @@ BenchmarkK4_Put-16    	  131302	      8762 ns/op
 
 RocksDB vs K4
 +=+=+=+=+=+=+=+=
-**RocksDB** 1 million writes sequential key-value pairs default settings = 2.9s-3.1s
-**K4**      1 million writes sequential key-value pairs default settings = 1.7s-1.9s
+**RocksDB v7.8.3** 1 million writes sequential key-value pairs default settings = 2.9s-3.1s
+**K4      v1.0.0**      1 million writes sequential key-value pairs default settings = 1.7s-1.9s
 ```
 
 ### Features
