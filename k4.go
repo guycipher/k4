@@ -151,32 +151,40 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 		exit:                   make(chan struct{}),
 	}
 
-	// Check for max level
-	if len(args) > 0 {
+	// Check for max level and probability for memtable (skiplist)
+	// this is optional
+	if len(args) > 0 { // if there are arguments
+
+		// First argument should be max level
 		if maxLevel, ok := args[0].(int); ok {
 			k4.memtableMaxLevel = maxLevel
-		} else {
+		} else { // if not provided, default to 12
 			k4.memtableMaxLevel = 12
 		}
 
 		// Check for p
-		if len(args) > 1 {
+		if len(args) > 1 { // if there are more arguments
+			// the argument after max level should be a probability
+
 			if p, ok := args[1].(float64); ok {
 				k4.memtableP = p
-			} else {
+			} else { // if not provided, default to 0.25
 				k4.memtableP = 0.25
 			}
 		}
-	} else {
+
+	} else { // If no optional memtable arguments, set defaults
 		k4.memtableMaxLevel = 12
 		k4.memtableP = 0.25
 	}
 
-	k4.memtable = skiplist.NewSkipList(k4.memtableMaxLevel, k4.memtableP)
+	k4.memtable = skiplist.NewSkipList(k4.memtableMaxLevel, k4.memtableP) // Set the memtable
 
 	// Load SSTables
+	// We open sstable files in the configured directory
 	k4.loadSSTables()
 
+	// If logging is set we will open a loggin file, so we can write to it
 	if logging {
 		// Create log file
 		logFile, err := os.OpenFile(directory+string(os.PathSeparator)+LOG_EXTENSION, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
@@ -202,7 +210,11 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 
 	// Start the background wal writer
 	k4.wg.Add(1)
-	go k4.backgroundWalWriter()
+	go k4.backgroundWalWriter() // start the background wal writer
+
+	// @todo start backgroundFlusher
+	// @todo start backgroundCompactor
+	// above will be implemented in the future to minimize blocking on reads and writes when these operations occur
 
 	return k4, nil
 }
