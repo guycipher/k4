@@ -269,12 +269,17 @@ func TestTransactionRollback(t *testing.T) {
 	txn.AddOperation(PUT, []byte("key1"), []byte("value1"))
 	txn.AddOperation(PUT, []byte("key2"), []byte("value2"))
 
-	txn.Commit(k4)
+	err = txn.Commit(k4)
+	if err != nil {
+		t.Fatalf("Failed to commit transaction: %v", err)
+	}
 
 	err = txn.Rollback(k4)
 	if err != nil {
 		t.Fatalf("Failed to rollback transaction: %v", err)
 	}
+
+	txn.Remove(k4)
 
 	value, err := k4.Get([]byte("key1"))
 	if err != nil {
@@ -291,6 +296,7 @@ func TestTransactionRollback(t *testing.T) {
 	if value != nil {
 		t.Fatalf("Expected nil, got %s", value)
 	}
+
 }
 
 func TestConcurrentTransactions(t *testing.T) {

@@ -339,3 +339,15 @@ func (it *SkipListIterator) Current() ([]byte, []byte) {
 func (sl *SkipList) Size() int {
 	return sl.size
 }
+
+// Copy creates a copy of the skip list
+func (sl *SkipList) Copy() *SkipList {
+	newSkipList := NewSkipList(sl.maxLevel, sl.p)
+	it := NewIterator(sl)
+	for it.Next() {
+		key, value := it.Current()
+		newSkipList.Insert(key, value, nil)
+	}
+	return newSkipList
+
+}

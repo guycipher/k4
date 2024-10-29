@@ -80,8 +80,9 @@ type SSTable struct {
 
 // Transaction is the structure for the transactions
 type Transaction struct {
-	id  int64        // Unique identifier for the transaction
-	ops []*Operation // List of operations in the transaction
+	id   int64        // Unique identifier for the transaction
+	ops  []*Operation // List of operations in the transaction
+	lock *sync.RWMutex
 }
 
 // Operation Used for transaction operations and WAL
@@ -773,8 +774,9 @@ func (k4 *K4) BeginTransaction() *Transaction {
 
 	// Create a new transaction
 	transaction := &Transaction{
-		id:  int64(len(k4.transactions)) + 1,
-		ops: make([]*Operation, 0),
+		id:   int64(len(k4.transactions)) + 1,
+		ops:  make([]*Operation, 0),
+		lock: &sync.RWMutex{},
 	}
 
 	k4.transactions = append(k4.transactions, transaction)
@@ -786,11 +788,16 @@ func (k4 *K4) BeginTransaction() *Transaction {
 // AddOperation adds an operation to a transaction
 func (txn *Transaction) AddOperation(op OPR_CODE, key, value []byte) {
 
+	// Lock up the transaction
+	txn.lock.Lock()
+	defer txn.lock.Unlock()
+
 	// If GET we should not add to the transaction
 	if op == GET {
 		return
 	}
 
+	// Initialize the operation
 	operation := &Operation{
 		Op:    op,
 		Key:   key,
@@ -800,12 +807,14 @@ func (txn *Transaction) AddOperation(op OPR_CODE, key, value []byte) {
 	// Based on the operation, we can determine the rollback operation
 	switch op {
 	case PUT:
+		// On PUT operation, the rollback operation is DELETE
 		operation.Rollback = &Operation{
 			Op:    DELETE,
 			Key:   key,
 			Value: nil,
 		}
 	case DELETE:
+		// On DELETE operation we can put back the key value pair
 		operation.Rollback = &Operation{
 			Op:    PUT,
 			Key:   key,
@@ -823,12 +832,27 @@ func (txn *Transaction) Commit(k4 *K4) error {
 	k4.memtableLock.Lock() // Makes the transaction atomic and serializable
 	defer k4.memtableLock.Unlock()
 
+	// Lock the transaction
+	txn.lock.Lock()
+	defer txn.lock.Unlock()
+
 	// Apply operations to memtable
 	for _, op := range txn.ops {
 		switch op.Op {
 		case PUT:
+			// Append operation to WAL queue
+			err := k4.appendToWALQueue(PUT, op.Key, op.Value)
+			if err != nil {
+				return err
+			}
+
 			k4.memtable.Insert(op.Key, op.Value, nil)
 		case DELETE:
+			err := k4.appendToWALQueue(DELETE, op.Key, nil)
+			if err != nil {
+				return err
+			}
+
 			k4.memtable.Insert(op.Key, []byte(TOMBSTONE_VALUE), nil)
 			// GET operations are read-only
 		}
@@ -849,15 +873,31 @@ func (txn *Transaction) Commit(k4 *K4) error {
 
 // Rollback rolls back a transaction (after a commit)
 func (txn *Transaction) Rollback(k4 *K4) error {
+	// Lock the transaction
+	txn.lock.Lock()
+	defer txn.lock.Unlock()
+
+	// Lock memtable
+	k4.memtableLock.Lock()
+	defer k4.memtableLock.Unlock()
 
 	// Apply rollback operations to memtable
 	for i := len(txn.ops) - 1; i >= 0; i-- {
+
 		op := txn.ops[i]
 		switch op.Op {
 		case PUT:
-			k4.Delete(op.Key)
+			err := k4.appendToWALQueue(PUT, op.Key, op.Value)
+			if err != nil {
+				return err
+			}
+			k4.memtable.Insert(op.Key, []byte(TOMBSTONE_VALUE), nil)
 		case DELETE:
-			k4.Put(op.Key, op.Value, nil)
+			err := k4.appendToWALQueue(PUT, op.Key, nil)
+			if err != nil {
+				return err
+			}
+			k4.memtable.Insert(op.Key, op.Value, nil)
 		}
 	}
 
@@ -886,6 +926,7 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 	// Check memtable
 	k4.memtableLock.RLock()
 	defer k4.memtableLock.RUnlock()
+
 	value, found := k4.memtable.Search(key)
 	if found {
 		if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 { // Check if the value is a tombstone
@@ -898,6 +939,11 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 	// We will check the sstables in reverse order
 	// We copy the sstables to avoid locking the sstables slice for the below looped reads
 	k4.sstablesLock.RLock()
+	if len(k4.sstables) == 0 {
+		k4.sstablesLock.RUnlock()
+		return nil, nil
+	}
+
 	sstablesCopy := make([]*SSTable, len(k4.sstables))
 	copy(sstablesCopy, k4.sstables)
 	k4.sstablesLock.RUnlock()

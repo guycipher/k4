@@ -131,3 +131,31 @@ func TestIterator(t *testing.T) {
 		t.Fatal("Expected iterator to be at the end")
 	}
 }
+
+func TestSearchNil(t *testing.T) {
+	sl := NewSkipList(12, 0.25)
+	key := []byte("key1")
+
+	_, found := sl.Search(key)
+	if found {
+		t.Fatal("Expected key to not be found")
+	}
+
+	// and again, just in case
+	_, found = sl.Search(key)
+	if found {
+		t.Fatal("Expected key to not be found")
+	}
+}
+
+func TestInsertTombstone(t *testing.T) {
+	sl := NewSkipList(12, 0.25)
+	key := []byte("key1")
+	value := []byte("$tombstone")
+
+	sl.Insert(key, value, nil)
+	_, found := sl.Search(key)
+	if found {
+		t.Fatal("Expected key to be deleted")
+	}
+}
