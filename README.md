@@ -1,4 +1,7 @@
-# k4
+<div>
+    <h1 align="center"><img width="188" src="graphics/k4.png"></h1>
+</div>
+
 High performance transactional, durable embedded storage engine. Designed to deliver low-latency, optimized read and write performance.
 
 ### Benchmarks
@@ -11,8 +14,9 @@ BenchmarkK4_Put
 BenchmarkK4_Put-16    	  131302	      8762 ns/op
 
 RocksDB vs K4
-+=+=+=+=+=+=+=+=
-**RocksDB v7.8.3** 1 million writes sequential key-value pairs default settings = 2.9s-3.1s
++=+=+=+=+=+=+=+
+Both engines were used with default settings and similar configurations.
+**RocksDB v7.8.3**      1 million writes sequential key-value pairs default settings = 2.9s-3.1s
 **K4      v1.0.0**      1 million writes sequential key-value pairs default settings = 1.7s-1.9s
 ```
 
@@ -161,25 +165,25 @@ func (k4 *K4) Put(key, value []byte, ttl *time.Duration) error
 func (k4 *K4) Get(key []byte) ([]byte, error)
 
 // Get all key-value pairs not equal to the key
-func (k4 *K4) NGet(key []byte) (map[string][]byte, error)
+func (k4 *K4) NGet(key []byte) (*KeyValueArray, error)
 
 // Get all key-value pairs greater than the key
-func (k4 *K4) GreaterThan(key []byte) (map[string][]byte, error)
+func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error)
 
 // Get all key-value pairs greater than or equal to the key
-func (k4 *K4) GreaterThanEq(key []byte) (map[string][]byte, error)
+func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error)
 
 // Get all key-value pairs less than the key
-func (k4 *K4) LessThan(key []byte) (map[string][]byte, error)
+func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error)
 
 // Get all key-value pairs less than or equal to the key
-func (k4 *K4) LessThanEq(key []byte) (map[string][]byte, error)
+func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error)
 
 // Get all key-value pairs in the range of startKey and endKey
-func (k4 *K4) Range(startKey, endKey []byte) (map[string][]byte, error)
+func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error)
 
 // Get all key-value pairs not in the range of startKey and endKey
-func (k4 *K4) NRange(startKey, endKey []byte) (map[string][]byte, error)
+func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error)
 
 // Delete a key-value pair from the db
 func (k4 *K4) Delete(key []byte) error
@@ -204,5 +208,12 @@ func (txn *Transaction) Commit(k4 *K4) error
 func (k4 *K4) RecoverFromWAL() error
 ```
 
+### Reporting bugs
+If you find a bug with K4 create an issue on this repository.
 
+### Contributing
+This repository for the K4 project welcomes contributions.  Before submitting a pull request (PR), please ensure you have reviewed and adhered to our guidelines outlined in SECURITY.md and CODE_OF_CONDUCT.md.
+Following these documents is essential for maintaining a safe and respectful environment for all contributors. We encourage you to create well-structured PRs that address specific issues or enhancements, and to include relevant details in your description. Your contributions help improve K4, and we appreciate your commitment to fostering a collaborative and secure development process. Thank you for being part of the K4 project.
 
+### License
+BSD 3-Clause License (https://opensource.org/licenses/BSD-3-Clause)

@@ -34,7 +34,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 	"strings"
 	"testing"
@@ -135,7 +134,6 @@ func TestMemtableFlush(t *testing.T) {
 
 	k4, err := Open(dir, 2764/2, 60, false)
 	if err != nil {
-		k4.Close()
 		t.Fatalf("Failed to open K4: %v", err)
 	}
 
@@ -405,7 +403,7 @@ func TestWALRecovery(t *testing.T) {
 	}
 
 	for _, file := range files {
-		log.Println(file.Name())
+
 		if file.IsDir() {
 			continue
 		}
@@ -451,28 +449,47 @@ func TestNGet(t *testing.T) {
 	}
 	defer k4.Close()
 
+	// Insert key-value pairs
 	key1 := []byte("key1")
 	value1 := []byte("value1")
 	key2 := []byte("key2")
 	value2 := []byte("value2")
+	key3 := []byte("key3")
+	value3 := []byte("value3")
 
 	err = k4.Put(key1, value1, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key1: %v", err)
 	}
-
 	err = k4.Put(key2, value2, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key2: %v", err)
 	}
-
-	result, err := k4.NGet(key1)
+	err = k4.Put(key3, value3, nil)
 	if err != nil {
-		t.Fatalf("Failed to get key: %v", err)
+		t.Fatalf("Failed to put key3: %v", err)
 	}
 
-	if len(result) != 1 || !bytes.Equal(result["key2"], value2) {
-		t.Fatalf("Expected key2 with value2, got %v", result)
+	// Test NGet
+	result, err := k4.NGet(key2)
+	if err != nil {
+		t.Fatalf("Failed to NGet: %v", err)
+	}
+
+	// Check the result
+	if len(*result) != 2 {
+		t.Fatalf("Expected 2 key-value pairs, got %d", len(*result))
+	}
+
+	expected := map[string][]byte{
+		"key1": value1,
+		"key3": value3,
+	}
+
+	for _, kv := range *result {
+		if !bytes.Equal(kv.Value, expected[string(kv.Key)]) {
+			t.Fatalf("Expected value %s for key %s, got %s", expected[string(kv.Key)], kv.Key, kv.Value)
+		}
 	}
 }
 
@@ -486,28 +503,53 @@ func TestGreaterThan(t *testing.T) {
 	}
 	defer k4.Close()
 
+	// Insert key-value pairs
 	key1 := []byte("key1")
 	value1 := []byte("value1")
 	key2 := []byte("key2")
 	value2 := []byte("value2")
+	key3 := []byte("key3")
+	value3 := []byte("value3")
+	key4 := []byte("key4")
+	value4 := []byte("value4")
 
 	err = k4.Put(key1, value1, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key1: %v", err)
 	}
-
 	err = k4.Put(key2, value2, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key2: %v", err)
 	}
-
-	result, err := k4.GreaterThan(key1)
+	err = k4.Put(key3, value3, nil)
 	if err != nil {
-		t.Fatalf("Failed to get key: %v", err)
+		t.Fatalf("Failed to put key3: %v", err)
+	}
+	err = k4.Put(key4, value4, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key4: %v", err)
 	}
 
-	if len(result) != 1 || !bytes.Equal(result["key2"], value2) {
-		t.Fatalf("Expected key2 with value2, got %v", result)
+	// Test GreaterThan
+	result, err := k4.GreaterThan(key2)
+	if err != nil {
+		t.Fatalf("Failed to GreaterThan: %v", err)
+	}
+
+	// Check the result
+	if len(*result) != 2 {
+		t.Fatalf("Expected 2 key-value pairs, got %d", len(*result))
+	}
+
+	expected := map[string][]byte{
+		"key3": value3,
+		"key4": value4,
+	}
+
+	for _, kv := range *result {
+		if !bytes.Equal(kv.Value, expected[string(kv.Key)]) {
+			t.Fatalf("Expected value %s for key %s, got %s", expected[string(kv.Key)], kv.Key, kv.Value)
+		}
 	}
 }
 
@@ -521,28 +563,54 @@ func TestGreaterThanEq(t *testing.T) {
 	}
 	defer k4.Close()
 
+	// Insert key-value pairs
 	key1 := []byte("key1")
 	value1 := []byte("value1")
 	key2 := []byte("key2")
 	value2 := []byte("value2")
+	key3 := []byte("key3")
+	value3 := []byte("value3")
+	key4 := []byte("key4")
+	value4 := []byte("value4")
 
 	err = k4.Put(key1, value1, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key1: %v", err)
 	}
-
 	err = k4.Put(key2, value2, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key2: %v", err)
 	}
-
-	result, err := k4.GreaterThanEq(key1)
+	err = k4.Put(key3, value3, nil)
 	if err != nil {
-		t.Fatalf("Failed to get key: %v", err)
+		t.Fatalf("Failed to put key3: %v", err)
+	}
+	err = k4.Put(key4, value4, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key4: %v", err)
 	}
 
-	if len(result) != 2 || !bytes.Equal(result["key1"], value1) || !bytes.Equal(result["key2"], value2) {
-		t.Fatalf("Expected key1 with value1 and key2 with value2, got %v", result)
+	// Test GreaterThanEq
+	result, err := k4.GreaterThanEq(key2)
+	if err != nil {
+		t.Fatalf("Failed to GreaterThanEq: %v", err)
+	}
+
+	// Check the result
+	if len(*result) != 3 {
+		t.Fatalf("Expected 3 key-value pairs, got %d", len(*result))
+	}
+
+	expected := map[string][]byte{
+		"key2": value2,
+		"key3": value3,
+		"key4": value4,
+	}
+
+	for _, kv := range *result {
+		if !bytes.Equal(kv.Value, expected[string(kv.Key)]) {
+			t.Fatalf("Expected value %s for key %s, got %s", expected[string(kv.Key)], kv.Key, kv.Value)
+		}
 	}
 }
 
@@ -556,28 +624,53 @@ func TestLessThan(t *testing.T) {
 	}
 	defer k4.Close()
 
+	// Insert key-value pairs
 	key1 := []byte("key1")
 	value1 := []byte("value1")
 	key2 := []byte("key2")
 	value2 := []byte("value2")
+	key3 := []byte("key3")
+	value3 := []byte("value3")
+	key4 := []byte("key4")
+	value4 := []byte("value4")
 
 	err = k4.Put(key1, value1, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key1: %v", err)
 	}
-
 	err = k4.Put(key2, value2, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key2: %v", err)
 	}
-
-	result, err := k4.LessThan(key2)
+	err = k4.Put(key3, value3, nil)
 	if err != nil {
-		t.Fatalf("Failed to get key: %v", err)
+		t.Fatalf("Failed to put key3: %v", err)
+	}
+	err = k4.Put(key4, value4, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key4: %v", err)
 	}
 
-	if len(result) != 1 || !bytes.Equal(result["key1"], value1) {
-		t.Fatalf("Expected key1 with value1, got %v", result)
+	// Test LessThan
+	result, err := k4.LessThan(key3)
+	if err != nil {
+		t.Fatalf("Failed to LessThan: %v", err)
+	}
+
+	// Check the result
+	if len(*result) != 2 {
+		t.Fatalf("Expected 2 key-value pairs, got %d", len(*result))
+	}
+
+	expected := map[string][]byte{
+		"key1": value1,
+		"key2": value2,
+	}
+
+	for _, kv := range *result {
+		if !bytes.Equal(kv.Value, expected[string(kv.Key)]) {
+			t.Fatalf("Expected value %s for key %s, got %s", expected[string(kv.Key)], kv.Key, kv.Value)
+		}
 	}
 }
 
@@ -591,28 +684,54 @@ func TestLessThanEq(t *testing.T) {
 	}
 	defer k4.Close()
 
+	// Insert key-value pairs
 	key1 := []byte("key1")
 	value1 := []byte("value1")
 	key2 := []byte("key2")
 	value2 := []byte("value2")
+	key3 := []byte("key3")
+	value3 := []byte("value3")
+	key4 := []byte("key4")
+	value4 := []byte("value4")
 
 	err = k4.Put(key1, value1, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key1: %v", err)
 	}
-
 	err = k4.Put(key2, value2, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key2: %v", err)
 	}
-
-	result, err := k4.LessThanEq(key2)
+	err = k4.Put(key3, value3, nil)
 	if err != nil {
-		t.Fatalf("Failed to get key: %v", err)
+		t.Fatalf("Failed to put key3: %v", err)
+	}
+	err = k4.Put(key4, value4, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key4: %v", err)
 	}
 
-	if len(result) != 2 || !bytes.Equal(result["key1"], value1) || !bytes.Equal(result["key2"], value2) {
-		t.Fatalf("Expected key1 with value1 and key2 with value2, got %v", result)
+	// Test LessThanEq
+	result, err := k4.LessThanEq(key3)
+	if err != nil {
+		t.Fatalf("Failed to LessThanEq: %v", err)
+	}
+
+	// Check the result
+	if len(*result) != 3 {
+		t.Fatalf("Expected 3 key-value pairs, got %d", len(*result))
+	}
+
+	expected := map[string][]byte{
+		"key1": value1,
+		"key2": value2,
+		"key3": value3,
+	}
+
+	for _, kv := range *result {
+		if !bytes.Equal(kv.Value, expected[string(kv.Key)]) {
+			t.Fatalf("Expected value %s for key %s, got %s", expected[string(kv.Key)], kv.Key, kv.Value)
+		}
 	}
 }
 
@@ -626,35 +745,54 @@ func TestRange(t *testing.T) {
 	}
 	defer k4.Close()
 
+	// Insert key-value pairs
 	key1 := []byte("key1")
 	value1 := []byte("value1")
 	key2 := []byte("key2")
 	value2 := []byte("value2")
 	key3 := []byte("key3")
 	value3 := []byte("value3")
+	key4 := []byte("key4")
+	value4 := []byte("value4")
 
 	err = k4.Put(key1, value1, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key1: %v", err)
 	}
-
 	err = k4.Put(key2, value2, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key2: %v", err)
 	}
-
 	err = k4.Put(key3, value3, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key3: %v", err)
 	}
-
-	result, err := k4.Range(key1, key2)
+	err = k4.Put(key4, value4, nil)
 	if err != nil {
-		t.Fatalf("Failed to get key: %v", err)
+		t.Fatalf("Failed to put key4: %v", err)
 	}
 
-	if len(result) != 2 || !bytes.Equal(result["key1"], value1) || !bytes.Equal(result["key2"], value2) {
-		t.Fatalf("Expected key1 with value1 and key2 with value2, got %v", result)
+	// Test Range
+	result, err := k4.Range(key2, key4)
+	if err != nil {
+		t.Fatalf("Failed to Range: %v", err)
+	}
+
+	// Check the result
+	if len(*result) != 3 {
+		t.Fatalf("Expected 3 key-value pairs, got %d", len(*result))
+	}
+
+	expected := map[string][]byte{
+		"key2": value2,
+		"key3": value3,
+		"key4": value4,
+	}
+
+	for _, kv := range *result {
+		if !bytes.Equal(kv.Value, expected[string(kv.Key)]) {
+			t.Fatalf("Expected value %s for key %s, got %s", expected[string(kv.Key)], kv.Key, kv.Value)
+		}
 	}
 }
 
@@ -668,6 +806,7 @@ func TestNRange(t *testing.T) {
 	}
 	defer k4.Close()
 
+	// Insert key-value pairs
 	key1 := []byte("key1")
 	value1 := []byte("value1")
 	key2 := []byte("key2")
@@ -679,31 +818,41 @@ func TestNRange(t *testing.T) {
 
 	err = k4.Put(key1, value1, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key1: %v", err)
 	}
-
 	err = k4.Put(key2, value2, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key2: %v", err)
 	}
-
 	err = k4.Put(key3, value3, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key3: %v", err)
 	}
-
 	err = k4.Put(key4, value4, nil)
 	if err != nil {
-		t.Fatalf("Failed to put key-value: %v", err)
+		t.Fatalf("Failed to put key4: %v", err)
 	}
 
+	// Test NRange
 	result, err := k4.NRange(key2, key3)
 	if err != nil {
-		t.Fatalf("Failed to get NRange: %v", err)
+		t.Fatalf("Failed to NRange: %v", err)
 	}
 
-	if len(result) != 2 || !bytes.Equal(result["key1"], value1) || !bytes.Equal(result["key4"], value4) {
-		t.Fatalf("Expected key1 with value1 and key4 with value4, got %v", result)
+	// Check the result
+	if len(*result) != 2 {
+		t.Fatalf("Expected 2 key-value pairs, got %d", len(*result))
+	}
+
+	expected := map[string][]byte{
+		"key1": value1,
+		"key4": value4,
+	}
+
+	for _, kv := range *result {
+		if !bytes.Equal(kv.Value, expected[string(kv.Key)]) {
+			t.Fatalf("Expected value %s for key %s, got %s", expected[string(kv.Key)], kv.Key, kv.Value)
+		}
 	}
 }
 

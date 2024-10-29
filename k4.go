@@ -121,6 +121,9 @@ type KV struct {
 	Value []byte // Binary array of keys value
 }
 
+// KeyValueArray type to hold a slice of KeyValue's
+type KeyValueArray []*KV
+
 // Open opens a new K4 instance at the specified directory.
 // will reopen the database if it already exists
 // directory - the directory where the database files are stored
@@ -491,7 +494,10 @@ func (k4 *K4) flushMemtable() error {
 	k4.printLog("Flushed memtable")
 
 	if time.Since(k4.lastCompaction).Seconds() > float64(k4.compactionInterval) {
-		k4.compact()
+		err = k4.compact()
+		if err != nil {
+			return err
+		}
 		k4.lastCompaction = time.Now()
 
 	}
@@ -743,6 +749,8 @@ func (k4 *K4) RecoverFromWAL() error {
 			if err != nil {
 				return err
 			}
+		default:
+			return fmt.Errorf("invalid operation")
 		}
 	}
 
@@ -853,7 +861,10 @@ func (txn *Transaction) Commit(k4 *K4) error {
 			}
 
 			k4.memtable.Insert(op.Key, []byte(TOMBSTONE_VALUE), nil)
-			// GET operations are read-only
+		// GET operations are read-only
+
+		default:
+			return fmt.Errorf("invalid operation")
 		}
 	}
 
@@ -862,7 +873,10 @@ func (txn *Transaction) Commit(k4 *K4) error {
 		err := k4.flushMemtable()
 		if err != nil {
 			// Rollback transaction
-			txn.Rollback(k4)
+			err = txn.Rollback(k4)
+			if err != nil {
+				return err
+			}
 			return err
 		}
 	}
@@ -897,6 +911,8 @@ func (txn *Transaction) Rollback(k4 *K4) error {
 				return err
 			}
 			k4.memtable.Insert(op.Key, op.Value, nil)
+		default:
+			return fmt.Errorf("invalid operation")
 		}
 	}
 
@@ -1028,8 +1044,8 @@ func (k4 *K4) Delete(key []byte) error {
 }
 
 // NGet gets a key from K4 and returns a map of key-value pairs
-func (k4 *K4) NGet(key []byte) (map[string][]byte, error) {
-	result := make(map[string][]byte)
+func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
+	result := &KeyValueArray{}
 
 	// Check memtable
 	k4.memtableLock.RLock()
@@ -1038,7 +1054,10 @@ func (k4 *K4) NGet(key []byte) (map[string][]byte, error) {
 	for it.Next() {
 		k, value := it.Current()
 		if !bytes.Equal(k, key) && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-			result[string(k)] = value
+			result.append(&KV{
+				Key:   k,
+				Value: value,
+			})
 		}
 	}
 
@@ -1056,8 +1075,11 @@ func (k4 *K4) NGet(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if !bytes.Equal(k, key) && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				if _, exists := result[string(k)]; !exists {
-					result[string(k)] = value
+				if _, exists := result.binarySearch(key); !exists {
+					result.append(&KV{
+						Key:   k,
+						Value: value,
+					})
 				}
 			}
 		}
@@ -1067,8 +1089,8 @@ func (k4 *K4) NGet(key []byte) (map[string][]byte, error) {
 }
 
 // GreaterThan gets all keys greater than a key from K4 and returns a map of key-value pairs
-func (k4 *K4) GreaterThan(key []byte) (map[string][]byte, error) {
-	result := make(map[string][]byte)
+func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error) {
+	result := &KeyValueArray{}
 
 	// Check memtable
 	k4.memtableLock.RLock()
@@ -1077,7 +1099,10 @@ func (k4 *K4) GreaterThan(key []byte) (map[string][]byte, error) {
 	for it.Next() {
 		k, value := it.Current()
 		if bytes.Compare(k, key) > 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-			result[string(k)] = value
+			result.append(&KV{
+				Key:   k,
+				Value: value,
+			})
 		}
 	}
 
@@ -1095,8 +1120,11 @@ func (k4 *K4) GreaterThan(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) > 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				if _, exists := result[string(k)]; !exists {
-					result[string(k)] = value
+				if _, exists := result.binarySearch(k); !exists {
+					result.append(&KV{
+						Key:   k,
+						Value: value,
+					})
 				}
 			}
 		}
@@ -1106,8 +1134,8 @@ func (k4 *K4) GreaterThan(key []byte) (map[string][]byte, error) {
 }
 
 // GreaterThanEq queries keys greater than or equal to a key from K4
-func (k4 *K4) GreaterThanEq(key []byte) (map[string][]byte, error) {
-	result := make(map[string][]byte)
+func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error) {
+	result := &KeyValueArray{}
 
 	// Check memtable
 	k4.memtableLock.RLock()
@@ -1116,7 +1144,10 @@ func (k4 *K4) GreaterThanEq(key []byte) (map[string][]byte, error) {
 	for it.Next() {
 		k, value := it.Current()
 		if bytes.Compare(k, key) >= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-			result[string(k)] = value
+			result.append(&KV{
+				Key:   k,
+				Value: value,
+			})
 		}
 	}
 
@@ -1134,8 +1165,11 @@ func (k4 *K4) GreaterThanEq(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) >= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				if _, exists := result[string(k)]; !exists {
-					result[string(k)] = value
+				if _, exists := result.binarySearch(k); !exists {
+					result.append(&KV{
+						Key:   k,
+						Value: value,
+					})
 				}
 			}
 		}
@@ -1145,8 +1179,8 @@ func (k4 *K4) GreaterThanEq(key []byte) (map[string][]byte, error) {
 }
 
 // LessThan gets all keys less than a key from K4 and returns a map of key-value pairs
-func (k4 *K4) LessThan(key []byte) (map[string][]byte, error) {
-	result := make(map[string][]byte)
+func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error) {
+	result := &KeyValueArray{}
 
 	// Check memtable
 	k4.memtableLock.RLock()
@@ -1155,7 +1189,10 @@ func (k4 *K4) LessThan(key []byte) (map[string][]byte, error) {
 	for it.Next() {
 		k, value := it.Current()
 		if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-			result[string(k)] = value
+			result.append(&KV{
+				Key:   k,
+				Value: value,
+			})
 		}
 	}
 
@@ -1173,8 +1210,11 @@ func (k4 *K4) LessThan(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				if _, exists := result[string(k)]; !exists {
-					result[string(k)] = value
+				if _, exists := result.binarySearch(k); !exists {
+					result.append(&KV{
+						Key:   k,
+						Value: value,
+					})
 				}
 			}
 		}
@@ -1184,8 +1224,8 @@ func (k4 *K4) LessThan(key []byte) (map[string][]byte, error) {
 }
 
 // LessThanEq queries keys less than or equal to a key from K4
-func (k4 *K4) LessThanEq(key []byte) (map[string][]byte, error) {
-	result := make(map[string][]byte)
+func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error) {
+	result := &KeyValueArray{}
 
 	// Check memtable
 	k4.memtableLock.RLock()
@@ -1194,7 +1234,10 @@ func (k4 *K4) LessThanEq(key []byte) (map[string][]byte, error) {
 	for it.Next() {
 		k, value := it.Current()
 		if bytes.Compare(k, key) <= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-			result[string(k)] = value
+			result.append(&KV{
+				Key:   k,
+				Value: value,
+			})
 		}
 	}
 
@@ -1212,8 +1255,11 @@ func (k4 *K4) LessThanEq(key []byte) (map[string][]byte, error) {
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) <= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				if _, exists := result[string(k)]; !exists {
-					result[string(k)] = value
+				if _, exists := result.binarySearch(k); !exists {
+					result.append(&KV{
+						Key:   k,
+						Value: value,
+					})
 				}
 			}
 		}
@@ -1223,8 +1269,8 @@ func (k4 *K4) LessThanEq(key []byte) (map[string][]byte, error) {
 }
 
 // Range queries keys in a range from K4
-func (k4 *K4) Range(startKey, endKey []byte) (map[string][]byte, error) {
-	result := make(map[string][]byte)
+func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
+	result := &KeyValueArray{}
 
 	// Check memtable
 	k4.memtableLock.RLock()
@@ -1233,7 +1279,10 @@ func (k4 *K4) Range(startKey, endKey []byte) (map[string][]byte, error) {
 		key, value := it.Current()
 		if bytes.Compare(key, startKey) >= 0 && bytes.Compare(key, endKey) <= 0 {
 			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				result[string(key)] = value
+				result.append(&KV{
+					Key:   key,
+					Value: value,
+				})
 			}
 		}
 	}
@@ -1254,8 +1303,11 @@ func (k4 *K4) Range(startKey, endKey []byte) (map[string][]byte, error) {
 			key, value := it.current()
 			if bytes.Compare(key, startKey) >= 0 && bytes.Compare(key, endKey) <= 0 {
 				if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-					if _, exists := result[string(key)]; !exists {
-						result[string(key)] = value
+					if _, exists := result.binarySearch(key); !exists {
+						result.append(&KV{
+							Key:   key,
+							Value: value,
+						})
 					}
 				}
 			}
@@ -1266,8 +1318,8 @@ func (k4 *K4) Range(startKey, endKey []byte) (map[string][]byte, error) {
 }
 
 // NRange queries keys in a range from K4 and returns a map of key-value pairs
-func (k4 *K4) NRange(startKey, endKey []byte) (map[string][]byte, error) {
-	result := make(map[string][]byte)
+func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
+	result := &KeyValueArray{}
 
 	// Check memtable
 	k4.memtableLock.RLock()
@@ -1276,7 +1328,10 @@ func (k4 *K4) NRange(startKey, endKey []byte) (map[string][]byte, error) {
 		key, value := it.Current()
 		if bytes.Compare(key, startKey) < 0 || bytes.Compare(key, endKey) > 0 {
 			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-				result[string(key)] = value
+				result.append(&KV{
+					Key:   key,
+					Value: value,
+				})
 			}
 		}
 	}
@@ -1297,8 +1352,11 @@ func (k4 *K4) NRange(startKey, endKey []byte) (map[string][]byte, error) {
 			key, value := it.current()
 			if bytes.Compare(key, startKey) < 0 || bytes.Compare(key, endKey) > 0 {
 				if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
-					if _, exists := result[string(key)]; !exists {
-						result[string(key)] = value
+					if _, exists := result.binarySearch(key); !exists {
+						result.append(&KV{
+							Key:   key,
+							Value: value,
+						})
 					}
 				}
 			}
@@ -1306,4 +1364,20 @@ func (k4 *K4) NRange(startKey, endKey []byte) (map[string][]byte, error) {
 	}
 
 	return result, nil
+}
+
+// append method to add a new KeyValue to the array
+func (kva *KeyValueArray) append(kv *KV) {
+	*kva = append(*kva, kv)
+}
+
+// binarySearch method to find a KeyValue by key using binary search
+func (kva KeyValueArray) binarySearch(key []byte) (*KV, bool) {
+	index := sort.Search(len(kva), func(i int) bool {
+		return bytes.Compare(kva[i].Key, key) >= 0
+	})
+	if index < len(kva) && bytes.Equal(kva[index].Key, key) {
+		return kva[index], true
+	}
+	return nil, false
 }
