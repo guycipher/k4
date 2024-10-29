@@ -117,8 +117,8 @@ type WALIterator struct {
 
 // KV mainly used for serialization
 type KV struct {
-	Key   []byte
-	Value []byte
+	Key   []byte // Binary array of key
+	Value []byte // Binary array of keys value
 }
 
 // Open opens a new K4 instance at the specified directory.
@@ -185,7 +185,7 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 	// We open sstable files in the configured directory
 	k4.loadSSTables()
 
-	// If logging is set we will open a loggin file, so we can write to it
+	// If logging is set we will open a logging file, so we can write to it
 	if logging {
 		// Create log file
 		logFile, err := os.OpenFile(directory+string(os.PathSeparator)+LOG_EXTENSION, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
@@ -312,18 +312,18 @@ func (k4 *K4) backgroundWalWriter() {
 
 // serializeOp serializes an operation
 func serializeOp(op OPR_CODE, key, value []byte) []byte {
-	var buf bytes.Buffer
+	var buf bytes.Buffer // create a buffer
 
-	// use gob
+	enc := gob.NewEncoder(&buf) // create a new encoder with the buffer
 
-	enc := gob.NewEncoder(&buf)
-
+	// create an operation struct and initialize it
 	operation := Operation{
 		Op:    op,
 		Key:   key,
 		Value: value,
 	}
 
+	// encode the operation
 	err := enc.Encode(&operation)
 	if err != nil {
 		return nil
@@ -887,7 +887,7 @@ func (txn *Transaction) Rollback(k4 *K4) error {
 		op := txn.ops[i]
 		switch op.Op {
 		case PUT:
-			err := k4.appendToWALQueue(PUT, op.Key, op.Value)
+			err := k4.appendToWALQueue(PUT, op.Key, []byte(TOMBSTONE_VALUE))
 			if err != nil {
 				return err
 			}

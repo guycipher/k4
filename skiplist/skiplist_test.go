@@ -158,4 +158,13 @@ func TestInsertTombstone(t *testing.T) {
 	if found {
 		t.Fatal("Expected key to be deleted")
 	}
+
+	key = []byte("key2")
+	value = []byte("$tombstone")
+
+	sl.Insert(key, value, nil)
+	_, found = sl.Search(key)
+	if found {
+		t.Fatal("Expected key to be deleted")
+	}
 }
