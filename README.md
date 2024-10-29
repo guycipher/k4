@@ -59,6 +59,7 @@ func main() {
 
 
     // Put
+    // Putting the same value will update the key
     key := []byte("key")
     value := []byte("value")
     err = db.Put(key, value, nil)
