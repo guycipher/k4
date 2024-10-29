@@ -37,8 +37,14 @@ RocksDB vs K4
 
 
 ### Example usage
+Importing
+```go
+import("github.com/guycipher/k4")
+```
+
 ```go
 func main() {
+    var err error
     directory := "./data"
     memtableFlushThreshold := 1024 * 1024 // 1MB
     compactionInterval := 3600 // 1 hour
@@ -56,12 +62,21 @@ func main() {
     key := []byte("key")
     value := []byte("value")
     err = db.Put(key, value, nil)
+    if err != nil {
+        log.Fatalf("Failed to put key: %v", err)
+    }
 
     // Get
-    value, err := db.Get(key)
+    value, err = db.Get(key)
+    if err != nil {
+        log.Fatalf("Failed to get key: %v", err)
+    }
 
     // Delete
     err = db.Delete(key)
+    if err != nil {
+        log.Fatalf("Failed to get key: %v", err)
+    }
 }
 ```
 
