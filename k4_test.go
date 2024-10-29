@@ -434,3 +434,269 @@ func TestWALRecovery(t *testing.T) {
 
 	k4.Close()
 }
+
+func TestNGet(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+	defer k4.Close()
+
+	key1 := []byte("key1")
+	value1 := []byte("value1")
+	key2 := []byte("key2")
+	value2 := []byte("value2")
+
+	err = k4.Put(key1, value1, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key2, value2, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	result, err := k4.NGet(key1)
+	if err != nil {
+		t.Fatalf("Failed to get key: %v", err)
+	}
+
+	if len(result) != 1 || !bytes.Equal(result["key2"], value2) {
+		t.Fatalf("Expected key2 with value2, got %v", result)
+	}
+}
+
+func TestGreaterThan(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+	defer k4.Close()
+
+	key1 := []byte("key1")
+	value1 := []byte("value1")
+	key2 := []byte("key2")
+	value2 := []byte("value2")
+
+	err = k4.Put(key1, value1, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key2, value2, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	result, err := k4.GreaterThan(key1)
+	if err != nil {
+		t.Fatalf("Failed to get key: %v", err)
+	}
+
+	if len(result) != 1 || !bytes.Equal(result["key2"], value2) {
+		t.Fatalf("Expected key2 with value2, got %v", result)
+	}
+}
+
+func TestGreaterThanEq(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+	defer k4.Close()
+
+	key1 := []byte("key1")
+	value1 := []byte("value1")
+	key2 := []byte("key2")
+	value2 := []byte("value2")
+
+	err = k4.Put(key1, value1, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key2, value2, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	result, err := k4.GreaterThanEq(key1)
+	if err != nil {
+		t.Fatalf("Failed to get key: %v", err)
+	}
+
+	if len(result) != 2 || !bytes.Equal(result["key1"], value1) || !bytes.Equal(result["key2"], value2) {
+		t.Fatalf("Expected key1 with value1 and key2 with value2, got %v", result)
+	}
+}
+
+func TestLessThan(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+	defer k4.Close()
+
+	key1 := []byte("key1")
+	value1 := []byte("value1")
+	key2 := []byte("key2")
+	value2 := []byte("value2")
+
+	err = k4.Put(key1, value1, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key2, value2, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	result, err := k4.LessThan(key2)
+	if err != nil {
+		t.Fatalf("Failed to get key: %v", err)
+	}
+
+	if len(result) != 1 || !bytes.Equal(result["key1"], value1) {
+		t.Fatalf("Expected key1 with value1, got %v", result)
+	}
+}
+
+func TestLessThanEq(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+	defer k4.Close()
+
+	key1 := []byte("key1")
+	value1 := []byte("value1")
+	key2 := []byte("key2")
+	value2 := []byte("value2")
+
+	err = k4.Put(key1, value1, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key2, value2, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	result, err := k4.LessThanEq(key2)
+	if err != nil {
+		t.Fatalf("Failed to get key: %v", err)
+	}
+
+	if len(result) != 2 || !bytes.Equal(result["key1"], value1) || !bytes.Equal(result["key2"], value2) {
+		t.Fatalf("Expected key1 with value1 and key2 with value2, got %v", result)
+	}
+}
+
+func TestRange(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+	defer k4.Close()
+
+	key1 := []byte("key1")
+	value1 := []byte("value1")
+	key2 := []byte("key2")
+	value2 := []byte("value2")
+	key3 := []byte("key3")
+	value3 := []byte("value3")
+
+	err = k4.Put(key1, value1, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key2, value2, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key3, value3, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	result, err := k4.Range(key1, key2)
+	if err != nil {
+		t.Fatalf("Failed to get key: %v", err)
+	}
+
+	if len(result) != 2 || !bytes.Equal(result["key1"], value1) || !bytes.Equal(result["key2"], value2) {
+		t.Fatalf("Expected key1 with value1 and key2 with value2, got %v", result)
+	}
+}
+
+func TestNRange(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 1024, 60, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+	defer k4.Close()
+
+	key1 := []byte("key1")
+	value1 := []byte("value1")
+	key2 := []byte("key2")
+	value2 := []byte("value2")
+	key3 := []byte("key3")
+	value3 := []byte("value3")
+	key4 := []byte("key4")
+	value4 := []byte("value4")
+
+	err = k4.Put(key1, value1, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key2, value2, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key3, value3, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	err = k4.Put(key4, value4, nil)
+	if err != nil {
+		t.Fatalf("Failed to put key-value: %v", err)
+	}
+
+	result, err := k4.NRange(key2, key3)
+	if err != nil {
+		t.Fatalf("Failed to get NRange: %v", err)
+	}
+
+	if len(result) != 2 || !bytes.Equal(result["key1"], value1) || !bytes.Equal(result["key4"], value4) {
+		t.Fatalf("Expected key1 with value1 and key4 with value4, got %v", result)
+	}
+}

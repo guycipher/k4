@@ -31,9 +31,12 @@
 package skiplist
 
 import (
+	"bytes"
 	"math/rand"
 	"time"
 )
+
+const TOMBSTONE_VALUE = "$tombstone" // This is specific to k4
 
 // Node represents a node in the skip list
 type Node struct {
@@ -119,7 +122,18 @@ func (sl *SkipList) Insert(key, value []byte, ttl *time.Duration) {
 	for i := sl.level; i >= 0; i-- {
 		for current.forward[i] != nil && string(current.forward[i].key) < string(key) {
 			if current.forward[i].IsExpired() {
-				sl.Delete(current.forward[i].key)
+				//sl.Delete(current.forward[i].key)
+				// We mark as tombstone and delete later
+				current.forward[i].ttl = nil
+
+				// Subtraction of the size of the old value
+				sl.size -= current.forward[i].Size()
+				// Mark as tombstone
+				current.forward[i].value = []byte(TOMBSTONE_VALUE)
+
+				// Add the size of the tombstone
+				sl.size += current.forward[i].Size()
+
 			} else {
 				current = current.forward[i]
 			}
@@ -169,7 +183,17 @@ func (sl *SkipList) Delete(key []byte) {
 	for i := sl.level; i >= 0; i-- {
 		for current.forward[i] != nil && string(current.forward[i].key) < string(key) {
 			if current.forward[i].IsExpired() {
-				sl.Delete(current.forward[i].key)
+				//sl.Delete(current.forward[i].key)
+				// We mark as tombstone and delete later
+				current.forward[i].ttl = nil
+
+				// Subtraction of the size of the old value
+				sl.size -= current.forward[i].Size()
+				// Mark as tombstone
+				current.forward[i].value = []byte(TOMBSTONE_VALUE)
+
+				// Add the size of the tombstone
+				sl.size += current.forward[i].Size()
 			} else {
 				current = current.forward[i]
 			}
@@ -199,8 +223,17 @@ func (sl *SkipList) Search(key []byte) ([]byte, bool) {
 	current := sl.header
 	for i := sl.level; i >= 0; i-- {
 		for current.forward[i] != nil && string(current.forward[i].key) < string(key) {
-			if current.forward[i].IsExpired() {
-				sl.Delete(current.forward[i].key)
+			if current.forward[i].IsExpired() || bytes.Equal(current.forward[i].value, []byte(TOMBSTONE_VALUE)) {
+				// Mark as tombstone and delete later
+				current.forward[i].ttl = nil
+
+				// Subtraction of the size of the old value
+				sl.size -= current.forward[i].Size()
+				// Mark as tombstone
+				current.forward[i].value = []byte(TOMBSTONE_VALUE)
+
+				// Add the size of the tombstone
+				sl.size += current.forward[i].Size()
 			} else {
 				current = current.forward[i]
 			}
@@ -208,8 +241,17 @@ func (sl *SkipList) Search(key []byte) ([]byte, bool) {
 	}
 	current = current.forward[0]
 	if current != nil && string(current.key) == string(key) {
-		if current.IsExpired() {
-			sl.Delete(current.key)
+		if current.IsExpired() || bytes.Equal(current.value, []byte(TOMBSTONE_VALUE)) {
+			// Mark as tombstone and delete later
+			current.ttl = nil
+
+			// Subtraction of the size of the old value
+			sl.size -= current.Size()
+			// Mark as tombstone
+			current.value = []byte(TOMBSTONE_VALUE)
+
+			// Add the size of the tombstone
+			sl.size += current.Size()
 			return nil, false
 		}
 		return current.value, true
@@ -238,7 +280,18 @@ func (it *SkipListIterator) Next() bool {
 		if !it.current.IsExpired() {
 			return true
 		}
-		it.skipList.Delete(it.current.key)
+		//it.skipList.Delete(it.current.key)
+		//sl.Delete(current.key)
+		// We mark as tombstone and delete later
+		it.current.ttl = nil
+
+		// Subtraction of the size of the old value
+		it.skipList.size -= it.current.Size()
+		// Mark as tombstone
+		it.current.value = []byte(TOMBSTONE_VALUE)
+
+		// Add the size of the tombstone
+		it.skipList.size += it.current.Size()
 	}
 	return false
 }

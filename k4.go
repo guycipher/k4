@@ -49,13 +49,15 @@ const LOG_EXTENSION = ".log"         // The log file extension
 const WAL_EXTENSION = ".wal"         // The write ahead log file extension
 const TOMBSTONE_VALUE = "$tombstone" // The tombstone value
 
-// k4 is the main structure for the k4 database
+// K4 is the main structure for the k4 database
 type K4 struct {
 	sstables               []*SSTable         // in memory sstables.  We just keep the opened file descriptors
 	sstablesLock           *sync.RWMutex      // read write lock for sstables
 	memtable               *skiplist.SkipList // in memory memtable (skip list)
 	memtableLock           *sync.RWMutex      // read write lock for memtable
 	memtableFlushThreshold int                // in bytes
+	memtableMaxLevel       int                // the maximum level of the memtable (default 12)
+	memtableP              float64            // the probability of the memtable (default 0.25)
 	compactionInterval     int                // in seconds, pairs up sstables and merges them
 	directory              string             // the directory where the database files are stored
 	lastCompaction         time.Time          // the last time a compaction was run
@@ -84,11 +86,11 @@ type Transaction struct {
 
 // Operation Used for transaction operations and WAL
 type Operation struct {
-	op       OPR_CODE   // Operation code
-	key      []byte     // Key for the operation
-	value    []byte     // Value for the operation
-	rollback *Operation // Pointer to the operation that will undo this operation
-}
+	Op       OPR_CODE   // Operation code
+	Key      []byte     // Key for the operation
+	Value    []byte     // Value for the operation
+	Rollback *Operation // Pointer to the operation that will undo this operation
+} // fields must be exported for gob
 
 type OPR_CODE int // Operation code
 
@@ -124,7 +126,7 @@ type KV struct {
 // memtableFlushThreshold - the threshold in bytes for flushing the memtable to disk
 // compactionInterval - the interval in seconds for running compactions
 // logging - whether or not to log to the log file
-func Open(directory string, memtableFlushThreshold int, compactionInterval int, logging bool) (*K4, error) {
+func Open(directory string, memtableFlushThreshold int, compactionInterval int, logging bool, args ...interface{}) (*K4, error) {
 	// Create directory if it doesn't exist
 	err := os.MkdirAll(directory, 0755)
 	if err != nil {
@@ -133,7 +135,6 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 
 	// Initialize K4
 	k4 := &K4{
-		memtable:               skiplist.NewSkipList(12, 0.25),
 		memtableLock:           &sync.RWMutex{},
 		directory:              directory,
 		memtableFlushThreshold: memtableFlushThreshold,
@@ -149,6 +150,29 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 		walQueueLock:           &sync.Mutex{},
 		exit:                   make(chan struct{}),
 	}
+
+	// Check for max level
+	if len(args) > 0 {
+		if maxLevel, ok := args[0].(int); ok {
+			k4.memtableMaxLevel = maxLevel
+		} else {
+			k4.memtableMaxLevel = 12
+		}
+
+		// Check for p
+		if len(args) > 1 {
+			if p, ok := args[1].(float64); ok {
+				k4.memtableP = p
+			} else {
+				k4.memtableP = 0.25
+			}
+		}
+	} else {
+		k4.memtableMaxLevel = 12
+		k4.memtableP = 0.25
+	}
+
+	k4.memtable = skiplist.NewSkipList(k4.memtableMaxLevel, k4.memtableP)
 
 	// Load SSTables
 	k4.loadSSTables()
@@ -246,33 +270,35 @@ func (k4 *K4) printLog(msg string) {
 func (k4 *K4) backgroundWalWriter() {
 	defer k4.wg.Done()
 	for {
+		k4.walQueueLock.Lock()
+		if len(k4.walQueue) > 0 {
+			op := k4.walQueue[0]
+			k4.walQueue = k4.walQueue[1:]
+			k4.walQueueLock.Unlock()
+
+			// Serialize operation
+			data := serializeOp(op.Op, op.Key, op.Value)
+
+			// Write to WAL
+			_, err := k4.wal.Write(data)
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err))
+			}
+		} else {
+			k4.walQueueLock.Unlock()
+		}
+
 		select {
 		case <-k4.exit:
 			return
 		default:
-			k4.walQueueLock.Lock()
-			if len(k4.walQueue) > 0 {
-				op := k4.walQueue[0]
-				k4.walQueue = k4.walQueue[1:]
-				k4.walQueueLock.Unlock()
-
-				// Serialize operation
-				data := SerializeOp(op.op, op.key, op.value)
-
-				// Write to WAL
-				_, err := k4.wal.Write(data)
-				if err != nil {
-					k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err))
-				}
-			} else {
-				k4.walQueueLock.Unlock()
-			}
+			continue
 		}
 	}
 }
 
-// SerializeOp serializes an operation
-func SerializeOp(op OPR_CODE, key, value []byte) []byte {
+// serializeOp serializes an operation
+func serializeOp(op OPR_CODE, key, value []byte) []byte {
 	var buf bytes.Buffer
 
 	// use gob
@@ -280,12 +306,12 @@ func SerializeOp(op OPR_CODE, key, value []byte) []byte {
 	enc := gob.NewEncoder(&buf)
 
 	operation := Operation{
-		op:    op,
-		key:   key,
-		value: value,
+		Op:    op,
+		Key:   key,
+		Value: value,
 	}
 
-	err := enc.Encode(operation)
+	err := enc.Encode(&operation)
 	if err != nil {
 		return nil
 	}
@@ -294,52 +320,50 @@ func SerializeOp(op OPR_CODE, key, value []byte) []byte {
 
 }
 
-// DeserializeOp deserializes an operation
-func DeserializeOp(data []byte) (OPR_CODE, []byte, []byte, error) {
+// deserializeOp deserializes an operation
+func deserializeOp(data []byte) (OPR_CODE, []byte, []byte, error) {
 
-	operation := Operation{}
+	operation := Operation{} // The operation to be deserialized
 
-	dec := gob.NewDecoder(bytes.NewReader(data))
+	dec := gob.NewDecoder(bytes.NewReader(data)) // Create a new decoder
 
-	err := dec.Decode(&operation)
+	err := dec.Decode(&operation) // Decode the operation
 
 	if err != nil {
 		return 0, nil, nil, err
 	}
 
-	return operation.op, operation.key, operation.value, nil
+	return operation.Op, operation.Key, operation.Value, nil
 }
 
-// SerializeKv serializes a key-value pair
-func SerializeKv(key, value []byte) []byte {
-	var buf bytes.Buffer
+// serializeKv serializes a key-value pair
+func serializeKv(key, value []byte) []byte {
+	var buf bytes.Buffer // create a buffer
 
-	// use gob
+	enc := gob.NewEncoder(&buf) // create a new encoder with the buffer
 
-	enc := gob.NewEncoder(&buf)
-
+	// create a key value pair struct
 	kv := KV{
 		Key:   key,
 		Value: value,
 	}
 
+	// encode the key value pair
 	err := enc.Encode(kv)
 	if err != nil {
 		return nil
 	}
 
-	return buf.Bytes()
+	return buf.Bytes() // return the bytes
 }
 
-// DeserializeKv deserializes a key-value pair
-func DeserializeKv(data []byte) (key, value []byte, err error) {
+// deserializeKv deserializes a key-value pair
+func deserializeKv(data []byte) (key, value []byte, err error) {
+	kv := KV{} // The key value pair to be deserialized
 
-	kv := KV{}
+	dec := gob.NewDecoder(bytes.NewReader(data)) // Create a new decoder
 
-	dec := gob.NewDecoder(bytes.NewReader(data))
-
-	err = dec.Decode(&kv)
-
+	err = dec.Decode(&kv) // Decode the key value pair
 	if err != nil {
 		return nil, nil, err
 	}
@@ -350,12 +374,13 @@ func DeserializeKv(data []byte) (key, value []byte, err error) {
 
 // loadSSTables loads SSTables from the directory
 func (k4 *K4) loadSSTables() {
-	// Open directory
+	// Open configured directory
 	dir, err := os.Open(k4.directory)
 	if err != nil {
 		return
 	}
-	defer dir.Close()
+
+	defer dir.Close() // defer closing the directory
 
 	// Read directory
 	files, err := dir.Readdir(-1)
@@ -372,19 +397,20 @@ func (k4 *K4) loadSSTables() {
 	}
 	sort.Slice(sstableFiles, func(i, j int) bool {
 		return sstableFiles[i].ModTime().Before(sstableFiles[j].ModTime())
-	})
+	}) // sort the sstable files by modification time
 
 	// Open and append SSTables
 	for _, file := range sstableFiles {
 		sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+file.Name(), os.O_RDWR, 0644)
 		if err != nil {
+			// could possibly handle this better
 			continue
 		}
 
 		k4.sstables = append(k4.sstables, &SSTable{
 			pager: sstablePager,
 			lock:  &sync.RWMutex{},
-		})
+		}) // append the sstable to the list of sstables
 	}
 }
 
@@ -433,7 +459,7 @@ func (k4 *K4) flushMemtable() error {
 		}
 
 		// Serialize key-value pair
-		data := SerializeKv(key, value)
+		data := serializeKv(key, value)
 
 		// Write to SSTable
 		_, err := sstable.pager.Write(data)
@@ -447,7 +473,7 @@ func (k4 *K4) flushMemtable() error {
 	k4.sstables = append(k4.sstables, sstable)
 
 	// Clear memtable
-	k4.memtable = skiplist.NewSkipList(12, 0.25)
+	skiplist.NewSkipList(k4.memtableMaxLevel, k4.memtableP)
 
 	k4.printLog("Flushed memtable")
 
@@ -480,16 +506,17 @@ func sstableFilename(index int) string {
 	return "sstable_" + fmt.Sprintf("%d", index) + SSTABLE_EXTENSION
 }
 
-func NewSSTableIterator(pager *pager.Pager) *SSTableIterator {
+// newSSTableIterator creates a new SSTable iterator
+func newSSTableIterator(pager *pager.Pager) *SSTableIterator {
 	return &SSTableIterator{
 		pager:       pager,
-		currentPage: 1,
+		currentPage: 1, // skip the first page which is the bloom filter
 		lastPage:    int(pager.Count() - 1),
 	}
 }
 
-// Next returns true if there is another key-value pair in the SSTable
-func (it *SSTableIterator) Next() bool {
+// next returns true if there is another key-value pair in the SSTable
+func (it *SSTableIterator) next() bool {
 	if it.currentPage > it.lastPage {
 		return false
 	}
@@ -498,14 +525,14 @@ func (it *SSTableIterator) Next() bool {
 	return true
 }
 
-// Current returns the current key-value pair in the SSTable
-func (it *SSTableIterator) Current() ([]byte, []byte) {
+// current returns the current key-value pair in the SSTable
+func (it *SSTableIterator) current() ([]byte, []byte) {
 	data, err := it.pager.GetPage(int64(it.currentPage))
 	if err != nil {
 		return nil, nil
 	}
 
-	key, value, err := DeserializeKv(data)
+	key, value, err := deserializeKv(data)
 	if err != nil {
 		return nil, nil
 	}
@@ -513,47 +540,44 @@ func (it *SSTableIterator) Current() ([]byte, []byte) {
 	return key, value
 }
 
-// CurrentKey returns the current key in the SSTable
-func (it *SSTableIterator) CurrentKey() []byte {
+// currentKey returns the current key in the SSTable
+func (it *SSTableIterator) currentKey() []byte {
 	data, err := it.pager.GetPage(int64(it.currentPage))
 	if err != nil {
 		return nil
 	}
-	key, _, err := DeserializeKv(data)
+	key, _, err := deserializeKv(data)
 	if err != nil {
 		return nil
 	}
 	return key
 }
 
-// NewWALIterator creates a new WAL iterator
-func NewWALIterator(pager *pager.Pager) *WALIterator {
+// newWALIterator creates a new WAL iterator
+func newWALIterator(pager *pager.Pager) *WALIterator {
+
 	return &WALIterator{
 		pager:       pager,
-		currentPage: 0,
+		currentPage: -1,
 		lastPage:    int(pager.Count() - 1),
 	}
 }
 
-// Next returns true if there is another operation in the WAL
-func (it *WALIterator) Next() bool {
-	if it.currentPage > it.lastPage {
-		return false
-	}
-
+// next returns true if there is another operation in the WAL
+func (it *WALIterator) next() bool {
 	it.currentPage++
-	return true
+	return it.currentPage <= it.lastPage
 }
 
-// Current returns the current operation in the WAL
-func (it *WALIterator) Current() (OPR_CODE, []byte, []byte) {
+// current returns the current operation in the WAL
+func (it *WALIterator) current() (OPR_CODE, []byte, []byte) {
 	data, err := it.pager.GetPage(int64(it.currentPage))
 	if err != nil {
 		return -1, nil, nil
 	}
 
 	// Deserialize operation
-	op, key, value, err := DeserializeOp(data)
+	op, key, value, err := deserializeOp(data)
 	if err != nil {
 		return -1, nil, nil
 	}
@@ -600,15 +624,15 @@ func (k4 *K4) compact() error {
 		sstable2 := k4.sstables[i+1]
 
 		// add all the keys to the bloom filter
-		it := NewSSTableIterator(sstable1.pager)
-		for it.Next() {
-			key := it.CurrentKey()
+		it := newSSTableIterator(sstable1.pager)
+		for it.next() {
+			key := it.currentKey()
 			bf.Add(key)
 		}
 
-		it = NewSSTableIterator(sstable2.pager)
-		for it.Next() {
-			key := it.CurrentKey()
+		it = newSSTableIterator(sstable2.pager)
+		for it.next() {
+			key := it.currentKey()
 			bf.Add(key)
 		}
 
@@ -625,12 +649,12 @@ func (k4 *K4) compact() error {
 		}
 
 		// iterate over the ith and (i+1)th sstable
-		it = NewSSTableIterator(sstable1.pager)
-		for it.Next() {
-			key, value := it.Current()
+		it = newSSTableIterator(sstable1.pager)
+		for it.next() {
+			key, value := it.current()
 
 			// Serialize key-value pair
-			data := SerializeKv(key, value)
+			data := serializeKv(key, value)
 
 			// Write to SSTable
 			_, err := newSstable.pager.Write(data)
@@ -639,13 +663,13 @@ func (k4 *K4) compact() error {
 			}
 		}
 
-		it = NewSSTableIterator(sstable2.pager)
+		it = newSSTableIterator(sstable2.pager)
 
-		for it.Next() {
-			key, value := it.Current()
+		for it.next() {
+			key, value := it.current()
 
 			// Serialize key-value pair
-			data := SerializeKv(key, value)
+			data := serializeKv(key, value)
 
 			// Write to SSTable
 			_, err := newSstable.pager.Write(data)
@@ -670,6 +694,18 @@ func (k4 *K4) compact() error {
 
 		// Append SSTable to list of SSTables
 		k4.sstables = append(k4.sstables, newSstable)
+
+		// remove the paired sstables from the directory
+		err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i))
+		if err != nil {
+			return err
+		}
+
+		err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i+1))
+		if err != nil {
+			return err
+		}
+
 	}
 
 	k4.printLog("Compaction completed")
@@ -680,9 +716,10 @@ func (k4 *K4) compact() error {
 // RecoverFromWAL recovers K4 from a write ahead log
 func (k4 *K4) RecoverFromWAL() error {
 	// Iterate over the write ahead log
-	it := NewWALIterator(k4.wal)
-	for it.Next() {
-		op, key, value := it.Current()
+	it := newWALIterator(k4.wal)
+	for it.next() {
+		op, key, value := it.current()
+
 		switch op {
 		case PUT:
 			err := k4.Put(key, value, nil)
@@ -701,12 +738,12 @@ func (k4 *K4) RecoverFromWAL() error {
 
 }
 
-// WriteToWAL writes an operation to the write ahead log queue
-func (k4 *K4) WriteToWAL(op OPR_CODE, key, value []byte) error {
+// appendToWALQueue appends an operation to the write ahead log queue
+func (k4 *K4) appendToWALQueue(op OPR_CODE, key, value []byte) error {
 	operation := &Operation{
-		op:    op,
-		key:   key,
-		value: value,
+		Op:    op,
+		Key:   key,
+		Value: value,
 	}
 
 	k4.walQueueLock.Lock()
@@ -736,26 +773,34 @@ func (k4 *K4) BeginTransaction() *Transaction {
 
 // AddOperation adds an operation to a transaction
 func (txn *Transaction) AddOperation(op OPR_CODE, key, value []byte) {
+
+	// If GET we should not add to the transaction
+	if op == GET {
+		return
+	}
+
 	operation := &Operation{
-		op:    op,
-		key:   key,
-		value: value,
+		Op:    op,
+		Key:   key,
+		Value: value,
 	}
 
 	// Based on the operation, we can determine the rollback operation
 	switch op {
 	case PUT:
-		operation.rollback = &Operation{
-			op:    DELETE,
-			key:   key,
-			value: nil,
+		operation.Rollback = &Operation{
+			Op:    DELETE,
+			Key:   key,
+			Value: nil,
 		}
 	case DELETE:
-		operation.rollback = &Operation{
-			op:    PUT,
-			key:   key,
-			value: value,
+		operation.Rollback = &Operation{
+			Op:    PUT,
+			Key:   key,
+			Value: value,
 		}
+	case GET:
+		operation.Rollback = nil // GET operations are read-only
 	}
 
 	txn.ops = append(txn.ops, operation)
@@ -768,11 +813,12 @@ func (txn *Transaction) Commit(k4 *K4) error {
 
 	// Apply operations to memtable
 	for _, op := range txn.ops {
-		switch op.op {
+		switch op.Op {
 		case PUT:
-			k4.memtable.Insert(op.key, op.value, nil)
+			k4.memtable.Insert(op.Key, op.Value, nil)
 		case DELETE:
-			k4.memtable.Insert(op.key, []byte(TOMBSTONE_VALUE), nil)
+			k4.memtable.Insert(op.Key, []byte(TOMBSTONE_VALUE), nil)
+			// GET operations are read-only
 		}
 	}
 
@@ -780,6 +826,8 @@ func (txn *Transaction) Commit(k4 *K4) error {
 	if k4.memtable.Size() > k4.memtableFlushThreshold {
 		err := k4.flushMemtable()
 		if err != nil {
+			// Rollback transaction
+			txn.Rollback(k4)
 			return err
 		}
 	}
@@ -793,11 +841,11 @@ func (txn *Transaction) Rollback(k4 *K4) error {
 	// Apply rollback operations to memtable
 	for i := len(txn.ops) - 1; i >= 0; i-- {
 		op := txn.ops[i]
-		switch op.op {
+		switch op.Op {
 		case PUT:
-			k4.Delete(op.key)
+			k4.Delete(op.Key)
 		case DELETE:
-			k4.Put(op.key, op.value, nil)
+			k4.Put(op.Key, op.Value, nil)
 		}
 	}
 
@@ -806,16 +854,19 @@ func (txn *Transaction) Rollback(k4 *K4) error {
 
 // Remove removes a transaction from the list of transactions in K4
 func (txn *Transaction) Remove(k4 *K4) {
-	// Clear operations
+	// Clear transaction operations
 	txn.ops = make([]*Operation, 0)
 
-	// Find and remove transaction
+	// Find and remove transaction from list of transactions
+	k4.transactionsLock.Lock() // Lock the transactions list
 	for i, t := range k4.transactions {
 		if t == txn {
 			k4.transactions = append(k4.transactions[:i], k4.transactions[i+1:]...)
 			break
 		}
 	}
+
+	k4.transactionsLock.Unlock() // Unlock the transactions list
 }
 
 // Get gets a key from K4
@@ -825,19 +876,24 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 	defer k4.memtableLock.RUnlock()
 	value, found := k4.memtable.Search(key)
 	if found {
-		if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 {
+		if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 { // Check if the value is a tombstone
 			return nil, nil
 		}
 
 		return value, nil
 	}
 
-	// Check SSTables
+	// We will check the sstables in reverse order
+	// We copy the sstables to avoid locking the sstables slice for the below looped reads
 	k4.sstablesLock.RLock()
-	defer k4.sstablesLock.RUnlock()
-	for i := len(k4.sstables) - 1; i >= 0; i-- {
-		sstable := k4.sstables[i]
-		value, err := sstable.Get(key)
+	sstablesCopy := make([]*SSTable, len(k4.sstables))
+	copy(sstablesCopy, k4.sstables)
+	k4.sstablesLock.RUnlock()
+
+	// Check SSTables
+	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		sstable := sstablesCopy[i]
+		value, err := sstable.get(key)
 		if err != nil {
 			return nil, err
 		}
@@ -849,11 +905,9 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 	return nil, nil
 }
 
-// Get gets a key from the SSTable
-func (sstable *SSTable) Get(key []byte) ([]byte, error) {
-	// Read from SSTable
-	sstable.lock.RLock()
-	defer sstable.lock.RUnlock()
+// get gets a key from the SSTable
+func (sstable *SSTable) get(key []byte) ([]byte, error) {
+	// SStable pages are locked on read so no need to lock general sstable
 
 	// Read the bloom filter
 	bfData, err := sstable.pager.GetPage(0)
@@ -872,9 +926,9 @@ func (sstable *SSTable) Get(key []byte) ([]byte, error) {
 	}
 
 	// Iterate over SSTable
-	it := NewSSTableIterator(sstable.pager)
-	for it.Next() {
-		k, v := it.Current()
+	it := newSSTableIterator(sstable.pager)
+	for it.next() {
+		k, v := it.current()
 
 		if bytes.Compare(k, key) == 0 {
 			return v, nil
@@ -886,17 +940,18 @@ func (sstable *SSTable) Get(key []byte) ([]byte, error) {
 
 // Put puts a key-value pair into K4
 func (k4 *K4) Put(key, value []byte, ttl *time.Duration) error {
-	// Put into memtable
+
+	// Lock memtable
 	k4.memtableLock.Lock()
 	defer k4.memtableLock.Unlock()
 
-	// Write to WAL
-	err := k4.WriteToWAL(PUT, key, value)
+	// Append operation to WAL queue
+	err := k4.appendToWALQueue(PUT, key, value)
 	if err != nil {
 		return err
 	}
 
-	k4.memtable.Insert(key, value, ttl)
+	k4.memtable.Insert(key, value, ttl) // insert the key value pair into the memtable
 
 	// Check if memtable needs to be flushed
 	if k4.memtable.Size() > k4.memtableFlushThreshold {
@@ -911,7 +966,273 @@ func (k4 *K4) Put(key, value []byte, ttl *time.Duration) error {
 
 // Delete deletes a key from K4
 func (k4 *K4) Delete(key []byte) error {
-
-	// Put tombstone into memtable
+	// We simply put a tombstone value for the key
 	return k4.Put(key, []byte(TOMBSTONE_VALUE), nil)
+}
+
+// NGet gets a key from K4 and returns a map of key-value pairs
+func (k4 *K4) NGet(key []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	// Check memtable
+	k4.memtableLock.RLock()
+	defer k4.memtableLock.RUnlock()
+	it := skiplist.NewIterator(k4.memtable)
+	for it.Next() {
+		k, value := it.Current()
+		if !bytes.Equal(k, key) && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			result[string(k)] = value
+		}
+	}
+
+	// We will check the sstables in reverse order
+	// We copy the sstables to avoid locking the sstables slice for the below looped reads
+	k4.sstablesLock.RLock()
+	sstablesCopy := make([]*SSTable, len(k4.sstables))
+	copy(sstablesCopy, k4.sstables)
+	k4.sstablesLock.RUnlock()
+
+	// Check SSTables
+	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		sstable := sstablesCopy[i]
+		it := newSSTableIterator(sstable.pager)
+		for it.next() {
+			k, value := it.current()
+			if !bytes.Equal(k, key) && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+				result[string(k)] = value
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// GreaterThan gets all keys greater than a key from K4 and returns a map of key-value pairs
+func (k4 *K4) GreaterThan(key []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	// Check memtable
+	k4.memtableLock.RLock()
+	defer k4.memtableLock.RUnlock()
+	it := skiplist.NewIterator(k4.memtable)
+	for it.Next() {
+		k, value := it.Current()
+		if bytes.Compare(k, key) > 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			result[string(k)] = value
+		}
+	}
+
+	// We will check the sstables in reverse order
+	// We copy the sstables to avoid locking the sstables slice for the below looped reads
+	k4.sstablesLock.RLock()
+	sstablesCopy := make([]*SSTable, len(k4.sstables))
+	copy(sstablesCopy, k4.sstables)
+	k4.sstablesLock.RUnlock()
+
+	// Check SSTables
+	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		sstable := sstablesCopy[i]
+		it := newSSTableIterator(sstable.pager)
+		for it.next() {
+			k, value := it.current()
+			if bytes.Compare(k, key) > 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+				result[string(k)] = value
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// GreaterThanEq queries keys greater than or equal to a key from K4
+func (k4 *K4) GreaterThanEq(key []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	// Check memtable
+	k4.memtableLock.RLock()
+	defer k4.memtableLock.RUnlock()
+	it := skiplist.NewIterator(k4.memtable)
+	for it.Next() {
+		k, value := it.Current()
+		if bytes.Compare(k, key) >= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			result[string(k)] = value
+		}
+	}
+
+	// We will check the sstables in reverse order
+	// We copy the sstables to avoid locking the sstables slice for the below looped reads
+	k4.sstablesLock.RLock()
+	sstablesCopy := make([]*SSTable, len(k4.sstables))
+	copy(sstablesCopy, k4.sstables)
+	k4.sstablesLock.RUnlock()
+
+	// Check SSTables
+	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		sstable := sstablesCopy[i]
+		it := newSSTableIterator(sstable.pager)
+		for it.next() {
+			k, value := it.current()
+			if bytes.Compare(k, key) >= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+				result[string(k)] = value
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// LessThan gets all keys less than a key from K4 and returns a map of key-value pairs
+func (k4 *K4) LessThan(key []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	// Check memtable
+	k4.memtableLock.RLock()
+	defer k4.memtableLock.RUnlock()
+	it := skiplist.NewIterator(k4.memtable)
+	for it.Next() {
+		k, value := it.Current()
+		if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			result[string(k)] = value
+		}
+	}
+
+	// We will check the sstables in reverse order
+	// We copy the sstables to avoid locking the sstables slice for the below looped reads
+	k4.sstablesLock.RLock()
+	sstablesCopy := make([]*SSTable, len(k4.sstables))
+	copy(sstablesCopy, k4.sstables)
+	k4.sstablesLock.RUnlock()
+
+	// Check SSTables
+	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		sstable := sstablesCopy[i]
+		it := newSSTableIterator(sstable.pager)
+		for it.next() {
+			k, value := it.current()
+			if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+				result[string(k)] = value
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// LessThanEq queries keys less than or equal to a key from K4
+func (k4 *K4) LessThanEq(key []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	// Check memtable
+	k4.memtableLock.RLock()
+	defer k4.memtableLock.RUnlock()
+	it := skiplist.NewIterator(k4.memtable)
+	for it.Next() {
+		k, value := it.Current()
+		if bytes.Compare(k, key) <= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			result[string(k)] = value
+		}
+	}
+
+	// We will check the sstables in reverse order
+	// We copy the sstables to avoid locking the sstables slice for the below looped reads
+	k4.sstablesLock.RLock()
+	sstablesCopy := make([]*SSTable, len(k4.sstables))
+	copy(sstablesCopy, k4.sstables)
+	k4.sstablesLock.RUnlock()
+
+	// Check SSTables
+	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		sstable := sstablesCopy[i]
+		it := newSSTableIterator(sstable.pager)
+		for it.next() {
+			k, value := it.current()
+			if bytes.Compare(k, key) <= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+				result[string(k)] = value
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// Range queries keys in a range from K4
+func (k4 *K4) Range(startKey, endKey []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	// Check memtable
+	k4.memtableLock.RLock()
+	it := skiplist.NewIterator(k4.memtable)
+	for it.Next() {
+		key, value := it.Current()
+		if bytes.Compare(key, startKey) >= 0 && bytes.Compare(key, endKey) <= 0 {
+			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+				result[string(key)] = value
+			}
+		}
+	}
+	k4.memtableLock.RUnlock()
+
+	// Check SSTables
+	// We will check the sstables in reverse order
+	// We copy the sstables to avoid locking the sstables slice for the below looped reads
+	k4.sstablesLock.RLock()
+	sstablesCopy := make([]*SSTable, len(k4.sstables))
+	copy(sstablesCopy, k4.sstables)
+	k4.sstablesLock.RUnlock()
+
+	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		sstable := sstablesCopy[i]
+		it := newSSTableIterator(sstable.pager)
+		for it.next() {
+			key, value := it.current()
+			if bytes.Compare(key, startKey) >= 0 && bytes.Compare(key, endKey) <= 0 {
+				if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+					result[string(key)] = value
+				}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// NRange queries keys in a range from K4 and returns a map of key-value pairs
+func (k4 *K4) NRange(startKey, endKey []byte) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+
+	// Check memtable
+	k4.memtableLock.RLock()
+	it := skiplist.NewIterator(k4.memtable)
+	for it.Next() {
+		key, value := it.Current()
+		if bytes.Compare(key, startKey) < 0 || bytes.Compare(key, endKey) > 0 {
+			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+				result[string(key)] = value
+			}
+		}
+	}
+	k4.memtableLock.RUnlock()
+
+	// Check SSTables
+	// We will check the sstables in reverse order
+	// We copy the sstables to avoid locking the sstables slice for the below looped reads
+	k4.sstablesLock.RLock()
+	sstablesCopy := make([]*SSTable, len(k4.sstables))
+	copy(sstablesCopy, k4.sstables)
+	k4.sstablesLock.RUnlock()
+
+	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		sstable := sstablesCopy[i]
+		it := newSSTableIterator(sstable.pager)
+		for it.next() {
+			key, value := it.current()
+			if bytes.Compare(key, startKey) < 0 || bytes.Compare(key, endKey) > 0 {
+				if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+					result[string(key)] = value
+				}
+			}
+		}
+	}
+
+	return result, nil
 }
