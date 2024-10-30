@@ -49,7 +49,7 @@ type Node struct {
 // SkipList represents a skip list
 type SkipList struct {
 	header   *Node   // Header node
-	level    int     // Current level0
+	level    int     // Current maximum level
 	size     int     // in bytes
 	maxLevel int     // Maximum level
 	p        float64 // Probability
