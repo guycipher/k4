@@ -33,6 +33,7 @@ package k4
 import (
 	"bytes"
 	"fmt"
+	"github.com/guycipher/k4/fuzz"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -984,4 +985,67 @@ func TestStress(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func FuzzTestK4(f *testing.F) {
+	f.Add((1024*1024)*50, 280, false, false) // Initial seed values
+
+	f.Fuzz(func(t *testing.T, memtableSize int, walSize int, compression bool, encryption bool) {
+		dir := setup(t)
+		defer teardown(dir)
+
+		k4, err := Open(dir, memtableSize, walSize, compression, encryption)
+		if err != nil {
+			t.Fatalf("Failed to open K4: %v", err)
+		}
+		defer k4.Close()
+
+		const numOperations = 100 // Number of operations to perform
+		for i := 0; i < numOperations; i++ {
+			key, _ := fuzz.RandomString(10)
+			value, _ := fuzz.RandomString(20)
+
+			// Test Put operation
+			err = k4.Put([]byte(key), []byte(value), nil)
+			if err != nil {
+				t.Fatalf("Failed to put key-value: %v", err)
+			}
+
+			// Test Get operation
+			got, err := k4.Get([]byte(key))
+			if err != nil {
+				t.Fatalf("Failed to get key: %v", err)
+			}
+			if !bytes.Equal(got, []byte(value)) {
+				t.Fatalf("Expected value %s, got %s", value, got)
+			}
+
+			// Test Update operation
+			newValue, _ := fuzz.RandomString(20)
+			err = k4.Put([]byte(key), []byte(newValue), nil)
+			if err != nil {
+				t.Fatalf("Failed to update key-value: %v", err)
+			}
+			got, err = k4.Get([]byte(key))
+			if err != nil {
+				t.Fatalf("Failed to get key: %v", err)
+			}
+			if !bytes.Equal(got, []byte(newValue)) {
+				t.Fatalf("Expected value %s, got %s", newValue, got)
+			}
+
+			// Test Delete operation
+			err = k4.Delete([]byte(key))
+			if err != nil {
+				t.Fatalf("Failed to delete key: %v", err)
+			}
+			got, err = k4.Get([]byte(key))
+			if err != nil {
+				t.Fatalf("Failed to get key: %v", err)
+			}
+			if got != nil {
+				t.Fatalf("Expected nil, got %s for key %s", got, key)
+			}
+		}
+	})
 }

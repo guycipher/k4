@@ -1062,7 +1062,10 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 			return nil, err
 		}
 		if value != nil {
-			return value, nil
+			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 { // Check if the value is a tombstone
+
+				return value, nil
+			}
 		}
 	}
 
