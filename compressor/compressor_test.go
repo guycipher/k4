@@ -33,6 +33,7 @@ package compressor
 import (
 	"bytes"
 	"encoding/gob"
+	"os"
 	"testing"
 )
 
@@ -165,4 +166,40 @@ func TestCompressor_CompressDecompress(t *testing.T) {
 			}
 		}
 	}
+}
+
+// We test compressing multiple files and getting % of compression
+func TestCompressor_Compression_Ratios(t *testing.T) {
+	// We read test.png into memory and calculate the compression ratio
+
+	// Read test.png
+	data, err := os.ReadFile("test.png")
+	if err != nil {
+		t.Fatalf("Failed to read test.png: %v", err)
+	}
+
+	// Read test2_public_domain.jpg
+	data2, err := os.ReadFile("test2_public_domain.jpg")
+	if err != nil {
+		t.Fatalf("Failed to read test2_public_domain.jpg: %v", err)
+	}
+
+	compressor, _ := NewCompressor(1024 * 32)
+
+	compressed := compressor.Compress(data)
+
+	// Calculate compression ratio
+	compressionRatio := float64(len(compressed)) / float64(len(data))
+
+	t.Logf("test.png compression ratio: %.2f times smaller than original", compressionRatio)
+
+	compressor, _ = NewCompressor(1024 * 32)
+
+	compressed = compressor.Compress(data2)
+
+	// Calculate compression ratio
+	compressionRatio = float64(len(compressed)) / float64(len(data2))
+
+	t.Logf("test2_public_domain.jpg compression ratio: %.2f times smaller than original", compressionRatio)
+
 }
