@@ -155,8 +155,6 @@ It is advisable to configure the memtable flush threshold and compaction interva
 
 Regarding compaction, a compaction interval of 1-6 hours is recommended, contingent upon storage usage and activity patterns.
 
-```go
-
 ### Compression
 Compression is optional and can be enabled or disabled when opening the K4 instance.
 Memtable keys and their values are not compressed.  What is compressed is WAL entries and SSTable pages.
