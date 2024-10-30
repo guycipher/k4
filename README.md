@@ -11,7 +11,7 @@ goarch: amd64
 pkg: github.com/guycipher/k4
 cpu: 11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz
 BenchmarkK4_Put
-BenchmarkK4_Put-16    	  131302	      8762 ns/op
+BenchmarkK4_Put-16    	  158104	      6862 ns/op # 145,000 ops/s
 
 RocksDB vs K4
 +=+=+=+=+=+=+=+
