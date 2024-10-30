@@ -35,6 +35,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/guycipher/k4/bloomfilter"
+	"github.com/guycipher/k4/compressor"
 	"github.com/guycipher/k4/pager"
 	"github.com/guycipher/k4/skiplist"
 	"log"
@@ -44,10 +45,11 @@ import (
 	"time"
 )
 
-const SSTABLE_EXTENSION = ".sst"     // The SSTable file extension
-const LOG_EXTENSION = ".log"         // The log file extension
-const WAL_EXTENSION = ".wal"         // The write ahead log file extension
-const TOMBSTONE_VALUE = "$tombstone" // The tombstone value
+const SSTABLE_EXTENSION = ".sst"          // The SSTable file extension
+const LOG_EXTENSION = ".log"              // The log file extension
+const WAL_EXTENSION = ".wal"              // The write ahead log file extension
+const TOMBSTONE_VALUE = "$tombstone"      // The tombstone value
+const COMPRESSION_WINDOW_SIZE = 1024 * 32 // The compression window size
 
 // K4 is the main structure for the k4 database
 type K4 struct {
@@ -70,12 +72,14 @@ type K4 struct {
 	walQueue               []*Operation       // the write ahead log queue
 	walQueueLock           *sync.Mutex        // mutex for the wal queue
 	exit                   chan struct{}      // channel to signal the background wal routine to exit
+	compress               bool               // whether to compress the keys and their values
 }
 
 // SSTable is the structure for the SSTable files
 type SSTable struct {
-	pager *pager.Pager  // the pager for the sstable file
-	lock  *sync.RWMutex // read write lock for the sstable
+	pager      *pager.Pager  // the pager for the sstable file
+	lock       *sync.RWMutex // read write lock for the sstable
+	compressed bool          // whether the sstable is compressed
 }
 
 // Transaction is the structure for the transactions
@@ -106,6 +110,7 @@ type SSTableIterator struct {
 	pager       *pager.Pager // the pager for the sstable file
 	currentPage int          // the current page
 	lastPage    int          // the last page in the sstable
+	compressed  bool         // whether the sstable is compressed
 }
 
 // WALIterator is the structure for the WAL iterator
@@ -113,6 +118,7 @@ type WALIterator struct {
 	pager       *pager.Pager // the pager for the wal file
 	currentPage int          // the current page
 	lastPage    int          // the last page in the wal
+	compressed  bool         // whether the wal is compressed
 }
 
 // KV mainly used for serialization
@@ -130,7 +136,7 @@ type KeyValueArray []*KV
 // memtableFlushThreshold - the threshold in bytes for flushing the memtable to disk
 // compactionInterval - the interval in seconds for running compactions
 // logging - whether or not to log to the log file
-func Open(directory string, memtableFlushThreshold int, compactionInterval int, logging bool, args ...interface{}) (*K4, error) {
+func Open(directory string, memtableFlushThreshold int, compactionInterval int, logging, compress bool, args ...interface{}) (*K4, error) {
 	// Create directory if it doesn't exist
 	err := os.MkdirAll(directory, 0755)
 	if err != nil {
@@ -153,6 +159,7 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 		walQueue:               make([]*Operation, 0),
 		walQueueLock:           &sync.Mutex{},
 		exit:                   make(chan struct{}),
+		compress:               compress,
 	}
 
 	// Check for max level and probability for memtable (skiplist)
@@ -424,8 +431,9 @@ func (k4 *K4) loadSSTables() {
 		}
 
 		k4.sstables = append(k4.sstables, &SSTable{
-			pager: sstablePager,
-			lock:  &sync.RWMutex{},
+			pager:      sstablePager,
+			lock:       &sync.RWMutex{},
+			compressed: k4.compress,
 		}) // append the sstable to the list of sstables
 	}
 }
@@ -474,6 +482,14 @@ func (k4 *K4) flushMemtable() error {
 			continue
 		}
 
+		// Check for compression
+		if k4.compress {
+			key, value, err = compressKeyValue(key, value)
+			if err != nil {
+				return err
+			}
+		}
+
 		// Serialize key-value pair
 		data := serializeKv(key, value)
 
@@ -515,8 +531,9 @@ func (k4 *K4) createSSTable() (*SSTable, error) {
 
 	// Create SSTable
 	return &SSTable{
-		pager: sstablePager,
-		lock:  &sync.RWMutex{},
+		pager:      sstablePager,
+		lock:       &sync.RWMutex{},
+		compressed: k4.compress,
 	}, nil
 }
 
@@ -526,11 +543,12 @@ func sstableFilename(index int) string {
 }
 
 // newSSTableIterator creates a new SSTable iterator
-func newSSTableIterator(pager *pager.Pager) *SSTableIterator {
+func newSSTableIterator(pager *pager.Pager, compressed bool) *SSTableIterator {
 	return &SSTableIterator{
 		pager:       pager,
 		currentPage: 1, // skip the first page which is the bloom filter
 		lastPage:    int(pager.Count() - 1),
+		compressed:  compressed,
 	}
 }
 
@@ -556,6 +574,13 @@ func (it *SSTableIterator) current() ([]byte, []byte) {
 		return nil, nil
 	}
 
+	if it.compressed {
+		key, value, err = decompressKeyValue(key, value)
+		if err != nil {
+			return nil, nil
+		}
+	}
+
 	return key, value
 }
 
@@ -573,12 +598,13 @@ func (it *SSTableIterator) currentKey() []byte {
 }
 
 // newWALIterator creates a new WAL iterator
-func newWALIterator(pager *pager.Pager) *WALIterator {
+func newWALIterator(pager *pager.Pager, compressed bool) *WALIterator {
 
 	return &WALIterator{
 		pager:       pager,
 		currentPage: -1,
 		lastPage:    int(pager.Count() - 1),
+		compressed:  compressed,
 	}
 }
 
@@ -599,6 +625,14 @@ func (it *WALIterator) current() (OPR_CODE, []byte, []byte) {
 	op, key, value, err := deserializeOp(data)
 	if err != nil {
 		return -1, nil, nil
+	}
+
+	if it.compressed {
+		key, value, err = decompressKeyValue(key, value)
+		if err != nil {
+			return -1, nil, nil
+		}
+
 	}
 
 	return op, key, value
@@ -642,13 +676,13 @@ func (k4 *K4) compact() error {
 		sstable2 := k4.sstables[i+1]
 
 		// add all the keys to the bloom filter
-		it := newSSTableIterator(sstable1.pager)
+		it := newSSTableIterator(sstable1.pager, k4.compress)
 		for it.next() {
 			key := it.currentKey()
 			bf.Add(key)
 		}
 
-		it = newSSTableIterator(sstable2.pager)
+		it = newSSTableIterator(sstable2.pager, k4.compress)
 		for it.next() {
 			key := it.currentKey()
 			bf.Add(key)
@@ -667,9 +701,17 @@ func (k4 *K4) compact() error {
 		}
 
 		// iterate over the ith and (i+1)th sstable
-		it = newSSTableIterator(sstable1.pager)
+		it = newSSTableIterator(sstable1.pager, k4.compress)
 		for it.next() {
 			key, value := it.current()
+
+			// Check for compression
+			if k4.compress {
+				key, value, err = compressKeyValue(key, value)
+				if err != nil {
+					return err
+				}
+			}
 
 			// Serialize key-value pair
 			data := serializeKv(key, value)
@@ -681,10 +723,18 @@ func (k4 *K4) compact() error {
 			}
 		}
 
-		it = newSSTableIterator(sstable2.pager)
+		it = newSSTableIterator(sstable2.pager, k4.compress)
 
 		for it.next() {
 			key, value := it.current()
+
+			// Check for compression
+			if k4.compress {
+				key, value, err = compressKeyValue(key, value)
+				if err != nil {
+					return err
+				}
+			}
 
 			// Serialize key-value pair
 			data := serializeKv(key, value)
@@ -734,7 +784,7 @@ func (k4 *K4) compact() error {
 // RecoverFromWAL recovers K4 from a write ahead log
 func (k4 *K4) RecoverFromWAL() error {
 	// Iterate over the write ahead log
-	it := newWALIterator(k4.wal)
+	it := newWALIterator(k4.wal, k4.compress)
 	for it.next() {
 		op, key, value := it.current()
 
@@ -758,12 +808,53 @@ func (k4 *K4) RecoverFromWAL() error {
 
 }
 
+// compressKeyValue compresses a key and value
+func compressKeyValue(key, value []byte) ([]byte, []byte, error) {
+	// compress the key and value
+	keyCompressor, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	valueCompressor, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return keyCompressor.Compress(key), valueCompressor.Compress(value), nil
+}
+
+// decompressKeyValue decompresses a key and value
+func decompressKeyValue(key, value []byte) ([]byte, []byte, error) {
+	// decompress the key and value
+	keyCompressor, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	valueCompressor, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return keyCompressor.Decompress(key), valueCompressor.Decompress(value), nil
+}
+
 // appendToWALQueue appends an operation to the write ahead log queue
 func (k4 *K4) appendToWALQueue(op OPR_CODE, key, value []byte) error {
 	operation := &Operation{
 		Op:    op,
 		Key:   key,
 		Value: value,
+	}
+
+	// If compression is configured we compress the key and value
+	if k4.compress {
+		var err error
+		operation.Key, operation.Value, err = compressKeyValue(key, value)
+		if err != nil {
+			return err
+		}
 	}
 
 	k4.walQueueLock.Lock()
@@ -999,7 +1090,7 @@ func (sstable *SSTable) get(key []byte) ([]byte, error) {
 	}
 
 	// Iterate over SSTable
-	it := newSSTableIterator(sstable.pager)
+	it := newSSTableIterator(sstable.pager, sstable.compressed)
 	for it.next() {
 		k, v := it.current()
 
@@ -1071,7 +1162,7 @@ func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager)
+		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
 			if !bytes.Equal(k, key) && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
@@ -1116,7 +1207,7 @@ func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error) {
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager)
+		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) > 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
@@ -1161,7 +1252,7 @@ func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error) {
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager)
+		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) >= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
@@ -1206,7 +1297,7 @@ func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error) {
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager)
+		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
@@ -1251,7 +1342,7 @@ func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error) {
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager)
+		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
 			if bytes.Compare(k, key) <= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
@@ -1298,7 +1389,7 @@ func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
 
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager)
+		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			key, value := it.current()
 			if bytes.Compare(key, startKey) >= 0 && bytes.Compare(key, endKey) <= 0 {
@@ -1347,7 +1438,7 @@ func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
 
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager)
+		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			key, value := it.current()
 			if bytes.Compare(key, startKey) < 0 || bytes.Compare(key, endKey) > 0 {

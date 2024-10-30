@@ -56,7 +56,7 @@ func TestOpenClose(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestPutGet(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestDelete(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestMemtableFlush(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 2764/2, 60, false)
+	k4, err := Open(dir, 2764/2, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestMemtableFlush(t *testing.T) {
 
 	k4.Close()
 
-	k4, err = Open(dir, 1024*1024, 2, false)
+	k4, err = Open(dir, 1024*1024, 2, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen K4: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestCompaction(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 2764/4, 1, false)
+	k4, err := Open(dir, 2764/4, 1, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestCompaction(t *testing.T) {
 
 	k4.Close()
 
-	k4, err = Open(dir, 1024*1024, 2, false)
+	k4, err = Open(dir, 1024*1024, 2, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen K4: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestTransactionCommit(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestTransactionRollback(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestConcurrentTransactions(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestPutGet2(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, (1024*1024)*512, 60, false)
+	k4, err := Open(dir, (1024*1024)*512, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestWALRecovery(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestWALRecovery(t *testing.T) {
 
 	}
 
-	k4, err = Open(dir, 1024, 60, false)
+	k4, err = Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen K4: %v", err)
 	}
@@ -443,7 +443,7 @@ func TestNGet(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -497,7 +497,7 @@ func TestGreaterThan(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -557,7 +557,7 @@ func TestGreaterThanEq(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -618,7 +618,7 @@ func TestLessThan(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -678,7 +678,7 @@ func TestLessThanEq(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -739,7 +739,7 @@ func TestRange(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -800,7 +800,7 @@ func TestNRange(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -860,7 +860,7 @@ func TestReopen(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false)
+	k4, err := Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -876,7 +876,7 @@ func TestReopen(t *testing.T) {
 
 	k4.Close()
 
-	k4, err = Open(dir, 1024, 60, false)
+	k4, err = Open(dir, 1024, 60, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen K4: %v", err)
 	}
@@ -889,5 +889,50 @@ func TestReopen(t *testing.T) {
 
 	if !bytes.Equal(got, value) {
 		t.Fatalf("Expected value %s, got %s", value, got)
+	}
+}
+
+func TestCompressionDecompression(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 2764/4, 1, false, true)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+
+	for i := 0; i < 100; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		err = k4.Put(key, value, nil)
+		if err != nil {
+			k4.Close()
+			t.Fatalf("Failed to put key-value: %v", err)
+		}
+
+	}
+
+	k4.Close()
+
+	k4, err = Open(dir, 1024*1024, 2, false, true)
+	if err != nil {
+		t.Fatalf("Failed to reopen K4: %v", err)
+	}
+	defer k4.Close()
+
+	// get all keys
+	for i := 0; i < 100; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		got, err := k4.Get(key)
+		if err != nil {
+			t.Fatalf("Failed to get key: %v", err)
+		}
+
+		if !bytes.Equal(got, value) {
+			t.Fatalf("Expected value %s, got %s", value, got)
+		}
 	}
 }

@@ -38,6 +38,7 @@ Both engines were used with default settings and similar configurations.
 - Granular page locking
 - Thread-safe
 - TTL support
+- Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm
 - No dependencies
 
 
@@ -54,8 +55,9 @@ func main() {
     memtableFlushThreshold := 1024 * 1024 // 1MB
     compactionInterval := 3600 // 1 hour
     logging := true
+    compression := false
 
-    db, err := k4.Open(directory, memtableFlushThreshold, compactionInterval, logging)
+    db, err := k4.Open(directory, memtableFlushThreshold, compactionInterval, logging, compression)
     if err != nil {
         log.Fatalf("Failed to open K4: %v", err)
     }
@@ -114,10 +116,11 @@ func main() {
     memtableFlushThreshold := 1024 * 1024 // 1MB
     compactionInterval := 3600 // 1 hour
     logging := true
+    compression := false
 
-    db, err := k4.Open(directory, memtableFlushThreshold, compactionInterval, logging)
+    db, err := k4.Open(directory, memtableFlushThreshold, compactionInterval, logging, compression)
     if err != nil {
-        log.Fatalf("Failed to open LSMTree: %v", err)
+        log.Fatalf("Failed to open K4: %v", err)
     }
 
     defer db.Close()
@@ -154,6 +157,10 @@ Regarding compaction, a compaction interval of 1-6 hours is recommended, conting
 
 ```go
 
+### Compression
+Compression is optional and can be enabled or disabled when opening the K4 instance.
+Memtable keys and their values are not compressed.  What is compressed is WAL entries and SSTable pages.
+
 ### API
 ```go
 
@@ -161,7 +168,7 @@ Regarding compaction, a compaction interval of 1-6 hours is recommended, conting
 // you can pass extra arguments to configure memtable such as
 // args[0] = max level, must be an int
 // args[1] = probability, must be a float64
-func Open(directory string, memtableFlushThreshold int, compactionInterval int, logging bool, args ...interface{}) (*K4, error)
+func Open(directory string, memtableFlushThreshold int, compactionInterval int, logging, compress bool, args ...interface{}) (*K4, error)
 
 // Close the K4 instance gracefully
 func (k4 *K4) Close() error

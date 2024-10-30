@@ -43,7 +43,7 @@ func BenchmarkK4_Put(b *testing.B) {
 	os.MkdirAll(dir, 0755)
 	defer os.RemoveAll(dir)
 
-	k4, err := Open(dir, 1024*1024, 60, false)
+	k4, err := Open(dir, 1024*1024, 60, false, false)
 	if err != nil {
 		b.Fatalf("Failed to open K4: %v", err)
 	}
@@ -67,7 +67,7 @@ func BenchmarkK4_Get(b *testing.B) {
 	os.MkdirAll(dir, 0755)
 	defer os.RemoveAll(dir)
 
-	k4, err := Open(dir, 1024*1024, 60, false)
+	k4, err := Open(dir, 1024*1024, 60, false, false)
 	if err != nil {
 		b.Fatalf("Failed to open K4: %v", err)
 	}
@@ -100,7 +100,7 @@ func BenchmarkK4_Delete(b *testing.B) {
 	os.MkdirAll(dir, 0755)
 	defer os.RemoveAll(dir)
 
-	k4, err := Open(dir, 1024*1024, 60, false)
+	k4, err := Open(dir, 1024*1024, 60, false, false)
 	if err != nil {
 		b.Fatalf("Failed to open K4: %v", err)
 	}
