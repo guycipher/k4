@@ -36,6 +36,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -935,4 +936,52 @@ func TestCompressionDecompression(t *testing.T) {
 			t.Fatalf("Expected value %s, got %s", value, got)
 		}
 	}
+}
+
+// TestStress simulates a high-load scenario by performing a large number of operations concurrently.
+// This helps identify issues related to concurrency, such as race conditions, deadlocks, etc.
+func TestStress(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, (1024*1024)*10, 60, false, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+	defer k4.Close()
+
+	const numOperations = 100000
+	const numGoroutines = 100
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < numOperations/numGoroutines; j++ {
+				key := []byte(fmt.Sprintf("key-%d-%d", id, j))
+				value := []byte(fmt.Sprintf("value-%d-%d", id, j))
+
+				err := k4.Put(key, value, nil)
+				if err != nil {
+					t.Errorf("Failed to put key-value: %v", err)
+					return
+				}
+
+				got, err := k4.Get(key)
+				if err != nil {
+					t.Errorf("Failed to get key: %v", err)
+					return
+				}
+
+				if !bytes.Equal(got, value) {
+					t.Errorf("Expected value %s, got %s", value, got)
+					return
+				}
+			}
+		}(i)
+	}
+
+	wg.Wait()
 }
