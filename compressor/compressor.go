@@ -33,7 +33,9 @@ package compressor
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"hash/fnv"
 )
 
 // Compressor is the main compression package struct
@@ -55,28 +57,32 @@ func (c *Compressor) Compress(data []byte) []byte {
 	var compressed bytes.Buffer
 	dataLen := len(data)
 	i := 0
+	hashTable := make(map[uint32]int)
 
 	for i < dataLen {
 		matchLength, matchDistance := 0, 0
-		for j := 1; j <= c.windowSize && i-j >= 0; j++ {
-			k := 0
-			for k < dataLen-i && data[i-j+k] == data[i+k] {
-				k++
+		if i+2 < dataLen {
+			hash := fnv.New32a()
+			hash.Write(data[i : i+3])
+			hashKey := hash.Sum32()
+
+			if pos, found := hashTable[hashKey]; found && i-pos <= c.windowSize {
+				j := 0
+				for j < dataLen-i && data[pos+j] == data[i+j] {
+					j++
+				}
+				matchLength = j
+				matchDistance = i - pos
 			}
-			if k > matchLength {
-				matchLength = k
-				matchDistance = j
-			}
+			hashTable[hashKey] = i
 		}
 
 		if matchLength > 0 {
-			compressed.WriteByte(byte(matchDistance >> 8))
-			compressed.WriteByte(byte(matchDistance & 0xFF))
+			binary.Write(&compressed, binary.BigEndian, uint16(matchDistance))
 			compressed.WriteByte(byte(matchLength))
 			i += matchLength
 		} else {
-			compressed.WriteByte(0)
-			compressed.WriteByte(0)
+			binary.Write(&compressed, binary.BigEndian, uint16(0))
 			compressed.WriteByte(data[i])
 			i++
 		}
@@ -90,19 +96,29 @@ func (c *Compressor) Decompress(data []byte) []byte {
 	var decompressed bytes.Buffer
 	dataLen := len(data)
 	i := 0
+	hashTable := make(map[uint32]int)
 
 	for i < dataLen {
-		matchDistance := int(data[i])<<8 | int(data[i+1])
+		var matchDistance uint16
+		binary.Read(bytes.NewReader(data[i:i+2]), binary.BigEndian, &matchDistance)
 		matchLength := int(data[i+2])
 		i += 3
 
 		if matchDistance > 0 {
-			start := decompressed.Len() - matchDistance
+			start := decompressed.Len() - int(matchDistance)
 			for j := 0; j < matchLength; j++ {
 				decompressed.WriteByte(decompressed.Bytes()[start+j])
 			}
 		} else {
 			decompressed.WriteByte(data[i-1])
+		}
+
+		// Update hash table with the new sequence
+		if decompressed.Len() >= 3 {
+			hash := fnv.New32a()
+			hash.Write(decompressed.Bytes()[decompressed.Len()-3:])
+			hashKey := hash.Sum32()
+			hashTable[hashKey] = decompressed.Len() - 3
 		}
 	}
 

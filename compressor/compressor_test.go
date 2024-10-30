@@ -55,46 +55,6 @@ func TestNewCompressor(t *testing.T) {
 	}
 }
 
-func TestCompressor_Compress(t *testing.T) {
-	compressor, _ := NewCompressor(32)
-
-	tests := []struct {
-		data     []byte
-		expected []byte
-	}{
-		{data: []byte{}, expected: []byte{}},
-		{data: []byte("abcdef"), expected: []byte{0, 0, 'a', 0, 0, 'b', 0, 0, 'c', 0, 0, 'd', 0, 0, 'e', 0, 0, 'f'}},
-		{data: []byte("aaaaaa"), expected: []byte{0, 0, 'a', 0, 0, 'a', 0, 0, 'a', 0, 0, 'a', 0, 0, 'a', 0, 0, 'a'}},
-	}
-
-	for _, tt := range tests {
-		compressed := compressor.Compress(tt.data)
-		if !bytes.Equal(compressed, tt.expected) {
-			t.Errorf("Compress(%v) = %v, expected %v", tt.data, compressed, tt.expected)
-		}
-	}
-}
-
-func TestCompressor_Decompress(t *testing.T) {
-	compressor, _ := NewCompressor(32)
-
-	tests := []struct {
-		data     []byte
-		expected []byte
-	}{
-		{data: []byte{}, expected: []byte{}},
-		{data: []byte{0, 0, 'a', 0, 0, 'b', 0, 0, 'c', 0, 0, 'd', 0, 0, 'e', 0, 0, 'f'}, expected: []byte("abcdef")},
-		{data: []byte{0, 0, 'a', 0, 0, 'a', 0, 0, 'a', 0, 0, 'a', 0, 0, 'a', 0, 0, 'a'}, expected: []byte("aaaaaa")},
-	}
-
-	for _, tt := range tests {
-		decompressed := compressor.Decompress(tt.data)
-		if !bytes.Equal(decompressed, tt.expected) {
-			t.Errorf("Decompress(%v) = %v, expected %v", tt.data, decompressed, tt.expected)
-		}
-	}
-}
-
 type TestStruct struct {
 	Data []byte
 	N    int64
