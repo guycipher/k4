@@ -38,7 +38,7 @@ Both engines were used with default settings and similar configurations.
 - Granular page locking
 - Thread-safe
 - TTL support
-- Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm
+- Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - No dependencies
 
 
