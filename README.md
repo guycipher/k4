@@ -2,9 +2,9 @@
     <h1 align="left"><img width="128" src="graphics/k4.png"></h1>
 </div>
 
-K4 is an open-source, high-performance storage engine that emphasizes transactional integrity and durability. Currently, it is designed as a library for Go, with plans for bindings and foreign function interfaces (FFIs) for other languages in the future.
+K4 is an open-source, high-performance, transactional, and durable storage engine based on an LSM (Log-Structured Merge) tree architecture. This design optimizes high-speed reads and writes, making it ideal for modern data-intensive applications.
 
-K4 is specifically designed to provide low-latency performance while optimizing both read and write operations.
+Currently available as a library for Go, K4 plans to offer bindings and foreign function interfaces (FFIs) for other languages in the future.
 
 ### Benchmarks
 ```
@@ -22,24 +22,27 @@ Both engines were used with default settings and similar configurations.
 **K4      v1.0.0**      1 million writes sequential key-value pairs default settings = 1.7s-1.9s
 ```
 
+More benchmarks coming comparing against other storage engines.
+
+
 ### Features
 - High speed writes and reads
 - Durability
+- Optimized for RAM and flash storage (SSD)
 - Variable length binary keys and values.  Keys and their values can be any length
 - Write-Ahead Logging (WAL).  System writes PUT and DELETE operations to a log file before applying them to K4.
 - Atomic transactions.  Multiple PUT and DELETE operations can be grouped together and applied atomically to K4.
 - Paired compaction.  SSTables are paired up during compaction and merged into a single SSTable(s).  This reduces the number of SSTables and minimizes disk I/O for read operations.
 - Memtable implemented as a skip list.
-- In-memory and disk-based storage
 - Configurable memtable flush threshold
 - Configurable compaction interval (in seconds)
 - Configurable logging
-- Configurable skip list
+- Configurable skip list (max level and probability)
 - Bloom filter for faster lookups.  SSTable initial pages contain a bloom filter.  The system uses the bloom filter to determine if a key is in the SSTable before scanning the SSTable.
 - Recovery from WAL
 - Granular page locking (sstables on scan are locked granularly)
 - Thread-safe (multiple readers, single writer)
-- TTL support
+- TTL support (time to live).  Keys can be set to expire after a certain time duration.
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - Background flushing and compaction operations for less blocking on read and write operations
 - No dependencies
@@ -114,7 +117,7 @@ txn.Remove() // txn now no longer usable nor existent
 ```
 
 ### Recovery
-If you have a populated WAL file in the data directory but no data you can use `RecoverFromWAL()` which will replay the WAL file and populate K4.
+If you have a populated WAL file in the data directory but no data files aka sstables you can use `RecoverFromWAL()` which will replay the WAL file and populate K4.
 
 #### Example
 ```go
@@ -143,7 +146,7 @@ func main() {
 
 ### TTL
 TTL (time to live) when putting a key-value pair you can specify a time duration after which the key-value pair will be deleted.
-The system will mark the key with a tombstone and delete it during compaction.
+The system will mark the key with a tombstone and delete it during compaction and or flush operations.
 ```go
 key := []byte("key")
 value := []byte("value")
@@ -165,6 +168,8 @@ Regarding compaction, a compaction interval of 1-6 hours is recommended, conting
 ### Compression
 Compression is optional and can be enabled or disabled when opening the K4 instance.
 Memtable keys and their values are not compressed.  What is compressed is WAL entries and SSTable pages.
+Compression could save disk space and reduce disk I/O but it could also increase CPU usage and slow down read and write operations.
+
 
 ### API
 ```go
