@@ -39,6 +39,7 @@ Both engines were used with default settings and similar configurations.
 - Thread-safe
 - TTL support
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
+- Background flushing and compaction operations for less blocking on read and write operations
 - No dependencies
 
 

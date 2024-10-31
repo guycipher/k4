@@ -359,8 +359,9 @@ func (sl *SkipList) Copy() *SkipList {
 	it := NewIterator(sl)
 	for it.Next() {
 		key, value := it.Current()
-		newSkipList.Insert(key, value, nil)
+		if value != nil && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+			newSkipList.Insert(key, value, nil)
+		}
 	}
 	return newSkipList
-
 }

@@ -53,26 +53,29 @@ const COMPRESSION_WINDOW_SIZE = 1024 * 32 // The compression window size
 
 // K4 is the main structure for the k4 database
 type K4 struct {
-	sstables               []*SSTable         // in memory sstables.  We just keep the opened file descriptors
-	sstablesLock           *sync.RWMutex      // read write lock for sstables
-	memtable               *skiplist.SkipList // in memory memtable (skip list)
-	memtableLock           *sync.RWMutex      // read write lock for memtable
-	memtableFlushThreshold int                // in bytes
-	memtableMaxLevel       int                // the maximum level of the memtable (default 12)
-	memtableP              float64            // the probability of the memtable (default 0.25)
-	compactionInterval     int                // in seconds, pairs up sstables and merges them
-	directory              string             // the directory where the database files are stored
-	lastCompaction         time.Time          // the last time a compaction was run
-	transactions           []*Transaction     // in memory transactions
-	transactionsLock       *sync.RWMutex      // read write lock for transactions
-	logging                bool               // whether or not to log to the log file
-	logFile                *os.File           // the log file
-	wal                    *pager.Pager       // the write ahead log
-	wg                     *sync.WaitGroup    // wait group for the wal
-	walQueue               []*Operation       // the write ahead log queue
-	walQueueLock           *sync.Mutex        // mutex for the wal queue
-	exit                   chan struct{}      // channel to signal the background wal routine to exit
-	compress               bool               // whether to compress the keys and their values
+	sstables               []*SSTable           // in memory sstables.  We just keep the opened file descriptors
+	sstablesLock           *sync.RWMutex        // read write lock for sstables
+	memtable               *skiplist.SkipList   // in memory memtable (skip list)
+	memtableLock           *sync.RWMutex        // read write lock for memtable
+	memtableFlushThreshold int                  // in bytes
+	memtableMaxLevel       int                  // the maximum level of the memtable (default 12)
+	memtableP              float64              // the probability of the memtable (default 0.25)
+	compactionInterval     int                  // in seconds, pairs up sstables and merges them
+	directory              string               // the directory where the database files are stored
+	lastCompaction         time.Time            // the last time a compaction was run
+	transactions           []*Transaction       // in memory transactions
+	transactionsLock       *sync.RWMutex        // read write lock for transactions
+	logging                bool                 // whether or not to log to the log file
+	logFile                *os.File             // the log file
+	wal                    *pager.Pager         // the write ahead log
+	wg                     *sync.WaitGroup      // wait group for the wal
+	walQueue               []*Operation         // the write ahead log queue
+	walQueueLock           *sync.Mutex          // mutex for the wal queue
+	exit                   chan struct{}        // channel to signal the background operations to exit
+	compress               bool                 // whether to compress the keys and their values
+	flushQueue             []*skiplist.SkipList // queue for flushing memtables to disk
+	flushQueueLock         *sync.Mutex          // mutex for the flush queue
+
 }
 
 // SSTable is the structure for the SSTable files
@@ -160,6 +163,8 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 		walQueueLock:           &sync.Mutex{},
 		exit:                   make(chan struct{}),
 		compress:               compress,
+		flushQueue:             make([]*skiplist.SkipList, 0),
+		flushQueueLock:         &sync.Mutex{},
 	}
 
 	// Check for max level and probability for memtable (skiplist)
@@ -223,9 +228,13 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 	k4.wg.Add(1)
 	go k4.backgroundWalWriter() // start the background wal writer
 
-	// @todo start backgroundFlusher
-	// @todo start backgroundCompactor
-	// above will be implemented in the future to minimize blocking on reads and writes when these operations occur
+	// Start the background flusher
+	k4.wg.Add(1)
+	go k4.backgroundFlusher() // start the background flusher
+
+	// Start the background compactor
+	k4.wg.Add(1)
+	go k4.backgroundCompactor() // start the background compactor
 
 	return k4, nil
 }
@@ -235,19 +244,15 @@ func (k4 *K4) Close() error {
 
 	k4.printLog("Closing up")
 
-	// wait for the wal writer to finish
-	close(k4.exit)
-
-	// wait for the background wal writer to finish
-	k4.wg.Wait()
-
 	if k4.memtable.Size() > 0 {
 		k4.printLog(fmt.Sprintf("Memtable is of size %d bytes and must be flushed to disk", k4.memtable.Size()))
-		err := k4.flushMemtable()
-		if err != nil {
-			return err
-		}
+		k4.appendMemtableToFlushQueue()
 	}
+
+	close(k4.exit)
+
+	// wait for the background operations to finish
+	k4.wg.Wait()
 
 	k4.printLog("Closing SSTables")
 
@@ -294,6 +299,8 @@ func (k4 *K4) printLog(msg string) {
 // This function runs in the background and pops operations from the wal queue and writes
 // to write ahead log.  The reason we do this is to optimize write speed
 func (k4 *K4) backgroundWalWriter() {
+	k4.printLog("Background WAL writer started")
+
 	defer k4.wg.Done() // Defer completion of routine
 
 	for {
@@ -313,9 +320,9 @@ func (k4 *K4) backgroundWalWriter() {
 				k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err)) // Log error
 			}
 		} else {
-			k4.walQueueLock.Unlock() // Unlock the wal queue
-			// We will sleep for a bit to avoid CPU bursts
-			time.Sleep(28 * time.Millisecond)
+			k4.walQueueLock.Unlock()          // Unlock the wal queue
+			time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
+			// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
 		}
 
 		select {
@@ -446,9 +453,23 @@ func (k4 *K4) loadSSTables() {
 	}
 }
 
+// appendMemtableToFlushQueue appends the memtable to the flush queue clearing the memtable
+// This opens up the memtable for new writes
+func (k4 *K4) appendMemtableToFlushQueue() {
+	k4.flushQueueLock.Lock()         // lock the flush queue
+	defer k4.flushQueueLock.Unlock() // unlock flush queue on defer
+
+	copyOfMemtable := k4.memtable.Copy() // copy the memtable
+
+	k4.flushQueue = append(k4.flushQueue, copyOfMemtable) // append the copy of the memtable to the flush queue
+
+	k4.memtable = skiplist.NewSkipList(k4.memtableMaxLevel, k4.memtableP) // clear the instance memtable to welcome to new writes
+
+}
+
 // flushMemtable flushes the memtable into an SSTable
-func (k4 *K4) flushMemtable() error {
-	k4.printLog("Flushing memtable")
+func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
+	k4.printLog("Flushing memtable off flush queue")
 	// Create SSTable
 	sstable, err := k4.createSSTable()
 	if err != nil {
@@ -457,7 +478,7 @@ func (k4 *K4) flushMemtable() error {
 
 	// Iterate over memtable and write to SSTable
 
-	it := skiplist.NewIterator(k4.memtable)
+	it := skiplist.NewIterator(memtable)
 	// first we will create a bloom filter which will be on initial pages of sstable
 	// we will add all the keys to the bloom filter
 	// then we will add the key value pairs to the sstable
@@ -467,7 +488,12 @@ func (k4 *K4) flushMemtable() error {
 
 	// add all the keys to the bloom filter
 	for it.Next() {
+
 		key, _ := it.Current()
+		if key == nil {
+			continue
+		}
+
 		bf.Add(key)
 	}
 
@@ -483,7 +509,7 @@ func (k4 *K4) flushMemtable() error {
 		return err
 	}
 
-	it = skiplist.NewIterator(k4.memtable)
+	it = skiplist.NewIterator(memtable)
 	for it.Next() {
 		key, value := it.Current()
 		if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 {
@@ -492,6 +518,7 @@ func (k4 *K4) flushMemtable() error {
 
 		// Check for compression
 		if k4.compress {
+
 			key, value, err = compressKeyValue(key, value)
 			if err != nil {
 				return err
@@ -509,22 +536,12 @@ func (k4 *K4) flushMemtable() error {
 
 	}
 
+	k4.sstablesLock.Lock() // lock the sstables
 	// Append SSTable to list of SSTables
 	k4.sstables = append(k4.sstables, sstable)
-
-	// Clear memtable
-	k4.memtable = skiplist.NewSkipList(k4.memtableMaxLevel, k4.memtableP)
+	k4.sstablesLock.Unlock() // unlock the sstables
 
 	k4.printLog("Flushed memtable")
-
-	if time.Since(k4.lastCompaction).Seconds() > float64(k4.compactionInterval) {
-		err = k4.compact()
-		if err != nil {
-			return err
-		}
-		k4.lastCompaction = time.Now()
-
-	}
 
 	return nil
 }
@@ -532,10 +549,13 @@ func (k4 *K4) flushMemtable() error {
 // createSSTable creates an SSTable
 func (k4 *K4) createSSTable() (*SSTable, error) {
 	// Create SSTable file
+	// Lock the sstables
+	k4.sstablesLock.Lock()
 	sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
+	k4.sstablesLock.Unlock() // We lock the sstables to gather the length of the sstables for filename
 
 	// Create SSTable
 	return &SSTable{
@@ -963,21 +983,18 @@ func (txn *Transaction) Commit(k4 *K4) error {
 		// GET operations are read-only
 
 		default:
+			// Rollback transaction
+			err := txn.Rollback(k4)
+			if err != nil {
+				return err
+			}
 			return fmt.Errorf("invalid operation")
 		}
 	}
 
 	// Check if memtable needs to be flushed
 	if k4.memtable.Size() > k4.memtableFlushThreshold {
-		err := k4.flushMemtable()
-		if err != nil {
-			// Rollback transaction
-			err = txn.Rollback(k4)
-			if err != nil {
-				return err
-			}
-			return err
-		}
+		k4.appendMemtableToFlushQueue() // Append memtable to flush queue
 	}
 
 	return nil
@@ -1130,10 +1147,7 @@ func (k4 *K4) Put(key, value []byte, ttl *time.Duration) error {
 
 	// Check if memtable needs to be flushed
 	if k4.memtable.Size() > k4.memtableFlushThreshold {
-		err := k4.flushMemtable()
-		if err != nil {
-			return err
-		}
+		k4.appendMemtableToFlushQueue()
 	}
 
 	return nil
@@ -1482,4 +1496,75 @@ func (kva KeyValueArray) binarySearch(key []byte) (*KV, bool) {
 		return kva[index], true
 	}
 	return nil, false
+}
+
+// backgroundFlusher
+// is a function that runs in the background.  When there is a memtable in the flush queue
+// we pop it and flush it to a new SSTable
+func (k4 *K4) backgroundFlusher() {
+	defer k4.wg.Done()
+	k4.printLog("Background flusher started")
+
+	for {
+		select {
+		case <-k4.exit:
+			// Escalate the remaining memtables in the flush queue
+			k4.flushQueueLock.Lock()
+			for _, memtable := range k4.flushQueue {
+				err := k4.flushMemtable(memtable)
+				if err != nil {
+					k4.printLog("Error flushing memtable: " + err.Error())
+				}
+			}
+			k4.flushQueue = nil
+			k4.flushQueueLock.Unlock()
+			return
+		default:
+			// Lock flush queue
+			k4.flushQueueLock.Lock()
+			if len(k4.flushQueue) > 0 {
+				memtable := k4.flushQueue[0] // pop a memtable from the flush queue
+				k4.flushQueue = k4.flushQueue[1:]
+				k4.flushQueueLock.Unlock() // Unlock flush queue
+
+				// Flush memtable
+				err := k4.flushMemtable(memtable)
+				if err != nil {
+					k4.printLog("Error flushing memtable: " + err.Error())
+				}
+
+			} else {
+				k4.flushQueueLock.Unlock()
+				time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
+				// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
+			}
+		}
+	}
+}
+
+// backgroundCompactor
+// is a function that runs in the background. At configured intervals, it will compact the sstables
+// by pairing and merging them
+func (k4 *K4) backgroundCompactor() {
+	k4.printLog("Background compactor started")
+
+	defer k4.wg.Done()
+
+	for {
+		select {
+		case <-k4.exit:
+			return
+		default:
+			if time.Since(k4.lastCompaction).Seconds() > float64(k4.compactionInterval) {
+				err := k4.compact()
+				if err != nil {
+					k4.printLog("Error compacting sstables: " + err.Error())
+				}
+				k4.lastCompaction = time.Now()
+			} else {
+				time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
+				// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
+			}
+		}
+	}
 }
