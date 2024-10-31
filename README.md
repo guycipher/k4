@@ -2,7 +2,9 @@
     <h1 align="left"><img width="128" src="graphics/k4.png"></h1>
 </div>
 
-High performance transactional, durable embedded storage engine. Designed to deliver low-latency, optimized read and write performance.
+K4 is an open-source, high-performance storage engine that emphasizes transactional integrity and durability. Currently, it is designed as a library for Go, with plans for bindings and foreign function interfaces (FFIs) for other languages in the future.
+
+K4 is specifically designed to provide low-latency performance while optimizing both read and write operations.
 
 ### Benchmarks
 ```
