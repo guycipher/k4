@@ -82,7 +82,7 @@ type K4 struct {
 type SSTable struct {
 	pager      *pager.Pager  // the pager for the sstable file
 	lock       *sync.RWMutex // read write lock for the sstable
-	compressed bool          // whether the sstable is compressed
+	compressed bool          // whether the sstable is compressed; this gets set when the sstable is created, the configuration is passed from K4
 }
 
 // Transaction is the structure for the transactions
@@ -121,7 +121,7 @@ type WALIterator struct {
 	pager       *pager.Pager // the pager for the wal file
 	currentPage int          // the current page
 	lastPage    int          // the last page in the wal
-	compressed  bool         // whether the wal is compressed
+	compressed  bool         // whether the wal is compressed; this gets set when the sstable is created, the configuration is passed from K4
 }
 
 // KV mainly used for serialization
@@ -228,13 +228,19 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 	k4.wg.Add(1)
 	go k4.backgroundWalWriter() // start the background wal writer
 
+	k4.printLog("Background WAL writer started")
+
 	// Start the background flusher
 	k4.wg.Add(1)
 	go k4.backgroundFlusher() // start the background flusher
+	k4.printLog("Background flusher started")
 
 	// Start the background compactor
 	k4.wg.Add(1)
 	go k4.backgroundCompactor() // start the background compactor
+	k4.printLog("Background compactor started")
+
+	k4.printLog("K4 opened successfully")
 
 	return k4, nil
 }
@@ -251,8 +257,12 @@ func (k4 *K4) Close() error {
 
 	close(k4.exit)
 
+	k4.printLog("Waiting for background operations to finish")
+
 	// wait for the background operations to finish
 	k4.wg.Wait()
+
+	k4.printLog("Background operations finished")
 
 	k4.printLog("Closing SSTables")
 
@@ -299,7 +309,6 @@ func (k4 *K4) printLog(msg string) {
 // This function runs in the background and pops operations from the wal queue and writes
 // to write ahead log.  The reason we do this is to optimize write speed
 func (k4 *K4) backgroundWalWriter() {
-	k4.printLog("Background WAL writer started")
 
 	defer k4.wg.Done() // Defer completion of routine
 
@@ -442,6 +451,7 @@ func (k4 *K4) loadSSTables() {
 		sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+file.Name(), os.O_RDWR, 0644)
 		if err != nil {
 			// could possibly handle this better
+			k4.printLog(fmt.Sprintf("Failed to open sstable: %v", err))
 			continue
 		}
 
@@ -603,6 +613,7 @@ func (it *SSTableIterator) current() ([]byte, []byte) {
 	// Deserialize key-value pair
 	key, value, err := deserializeKv(data)
 	if err != nil {
+
 		return nil, nil
 	}
 
@@ -1080,7 +1091,8 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 
 	value, found := k4.memtable.Search(key)
 	if found {
-		if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 { // Check if the value is a tombstone
+		// Check if the value is a tombstone
+		if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 {
 			return nil, nil
 		}
 
@@ -1108,9 +1120,10 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 		}
 		if value != nil {
 			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 { // Check if the value is a tombstone
-
-				return value, nil
+				return nil, nil
 			}
+
+			return value, nil
 		}
 	}
 
@@ -1530,7 +1543,6 @@ func (kva KeyValueArray) binarySearch(key []byte) (*KV, bool) {
 // we pop it and flush it to a new SSTable
 func (k4 *K4) backgroundFlusher() {
 	defer k4.wg.Done()
-	k4.printLog("Background flusher started")
 
 	for {
 		select {

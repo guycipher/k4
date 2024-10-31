@@ -32,6 +32,7 @@ package bloomfilter
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
@@ -200,6 +201,58 @@ func TestCheck2(t *testing.T) {
 	serialized, err := bf.Serialize()
 	if err != nil {
 		t.Fatalf("Failed to serialize BloomFilter: %v", err)
+	}
+
+	bf, err = Deserialize(serialized)
+	if err != nil {
+		t.Fatalf("Failed to deserialize BloomFilter: %v", err)
+	}
+
+	tt = time.Now()
+
+	// check all keys
+	for i := 0; i < 10000; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		if !bf.Check(key) {
+			t.Fatalf("Expected key %s to be present in BloomFilter, got not present", key)
+		}
+	}
+
+	t.Logf("Time to check 10k keys in bloomfilter: %v", time.Since(tt))
+}
+
+func TestCheck3(t *testing.T) {
+	tt := time.Now()
+	bf := NewBloomFilter(1000000, 8)
+
+	for i := 0; i < 10000; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		bf.Add(key)
+	}
+
+	t.Logf("Time to add 10k keys to bloomfilter: %v", time.Since(tt))
+
+	serialized, err := bf.Serialize()
+	if err != nil {
+		t.Fatalf("Failed to serialize BloomFilter: %v", err)
+	}
+
+	// We write to file
+	f, err := os.OpenFile("bloomfilter.test", os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+
+	defer os.Remove("bloomfilter.test")
+
+	f.WriteAt(serialized, 0)
+
+	// We read from file
+	serialized = make([]byte, len(serialized))
+
+	_, err = f.ReadAt(serialized, 0)
+	if err != nil {
+		t.Fatalf("Failed to read from file: %v", err)
 	}
 
 	bf, err = Deserialize(serialized)

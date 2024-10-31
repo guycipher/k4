@@ -150,6 +150,8 @@ func TestMemtableFlush(t *testing.T) {
 		}
 	}
 
+	time.Sleep(1 * time.Second)
+
 	k4.Close()
 
 	k4, err = Open(dir, 1024*1024, 2, false, false)
