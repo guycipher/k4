@@ -881,32 +881,40 @@ func (k4 *K4) RecoverFromWAL() error {
 // compressKeyValue compresses a key and value
 func compressKeyValue(key, value []byte) ([]byte, []byte, error) {
 	// compress the key and value
+
+	// create new compressor for key
 	keyCompressor, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// create new compressor for value
 	valueCompressor, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// compress the key and value and return
 	return keyCompressor.Compress(key), valueCompressor.Compress(value), nil
 }
 
 // decompressKeyValue decompresses a key and value
 func decompressKeyValue(key, value []byte) ([]byte, []byte, error) {
 	// decompress the key and value
+
+	// create new decompressor for key
 	keyCompressor, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// create new decompressor for value
 	valueCompressor, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// decompress the key and value and return
 	return keyCompressor.Decompress(key), valueCompressor.Decompress(value), nil
 }
 
@@ -927,18 +935,21 @@ func (k4 *K4) appendToWALQueue(op OPR_CODE, key, value []byte) error {
 		}
 	}
 
+	// Lock the wal queue
 	k4.walQueueLock.Lock()
-	defer k4.walQueueLock.Unlock()
+	defer k4.walQueueLock.Unlock() // unlock on defer
 
-	k4.walQueue = append(k4.walQueue, operation)
+	k4.walQueue = append(k4.walQueue, operation) // Append operation to the wal queue
 
 	return nil
 }
 
 // BeginTransaction begins a new transaction
 func (k4 *K4) BeginTransaction() *Transaction {
+
+	// Lock the transactions list
 	k4.transactionsLock.Lock()
-	defer k4.transactionsLock.Unlock()
+	defer k4.transactionsLock.Unlock() // Unlock the transactions list on defer
 
 	// Create a new transaction
 	transaction := &Transaction{
@@ -947,7 +958,7 @@ func (k4 *K4) BeginTransaction() *Transaction {
 		lock: &sync.RWMutex{},
 	}
 
-	k4.transactions = append(k4.transactions, transaction)
+	k4.transactions = append(k4.transactions, transaction) // Append transaction to list of transactions
 
 	return transaction
 
@@ -958,7 +969,7 @@ func (txn *Transaction) AddOperation(op OPR_CODE, key, value []byte) {
 
 	// Lock up the transaction
 	txn.lock.Lock()
-	defer txn.lock.Unlock()
+	defer txn.lock.Unlock() // Unlock the transaction on defer
 
 	// If GET we should not add to the transaction
 	if op == GET {
@@ -1014,7 +1025,7 @@ func (txn *Transaction) Commit(k4 *K4) error {
 				return err
 			}
 
-			k4.memtable.Insert(op.Key, op.Value, nil)
+			k4.memtable.Insert(op.Key, op.Value, nil) // we don't use put, we use insert
 		case DELETE:
 			err := k4.appendToWALQueue(DELETE, op.Key, nil)
 			if err != nil {
@@ -1096,10 +1107,13 @@ func (txn *Transaction) Remove(k4 *K4) {
 
 // Get gets a key from K4
 func (k4 *K4) Get(key []byte) ([]byte, error) {
-	// Check memtable
-	k4.memtableLock.RLock()
-	defer k4.memtableLock.RUnlock()
 
+	// read lock the memtable
+	k4.memtableLock.RLock()
+
+	defer k4.memtableLock.RUnlock() // unlock the memtable on defer
+
+	// Check memtable
 	value, found := k4.memtable.Search(key)
 	if found {
 		// Check if the value is a tombstone
