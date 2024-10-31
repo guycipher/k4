@@ -24,8 +24,8 @@ Both engines were used with default settings and similar configurations.
 - High speed writes and reads
 - Durability
 - Variable length binary keys and values.  Keys and their values can be any length
-- Write-Ahead Logging (WAL).  System writes PUT and DELETE operations to a log file before applying them to the LSM tree.
-- Atomic transactions.  Multiple PUT and DELETE operations can be grouped together and applied atomically to the LSM tree.
+- Write-Ahead Logging (WAL).  System writes PUT and DELETE operations to a log file before applying them to K4.
+- Atomic transactions.  Multiple PUT and DELETE operations can be grouped together and applied atomically to K4.
 - Paired compaction.  SSTables are paired up during compaction and merged into a single SSTable(s).  This reduces the number of SSTables and minimizes disk I/O for read operations.
 - Memtable implemented as a skip list.
 - In-memory and disk-based storage
@@ -35,8 +35,8 @@ Both engines were used with default settings and similar configurations.
 - Configurable skip list
 - Bloom filter for faster lookups.  SSTable initial pages contain a bloom filter.  The system uses the bloom filter to determine if a key is in the SSTable before scanning the SSTable.
 - Recovery from WAL
-- Granular page locking
-- Thread-safe
+- Granular page locking (sstables on scan are locked granularly)
+- Thread-safe (multiple readers, single writer)
 - TTL support
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - Background flushing and compaction operations for less blocking on read and write operations
@@ -90,6 +90,10 @@ func main() {
 ```
 
 ### Transactions
+Transactions are atomic and can be used to group multiple PUT and DELETE operations together.  Transactions are committed atomically to K4.
+Transactions can be rolled back after their commited but before they are removed.
+Commits are first come first serve and are applied to K4 in the order they were committed.
+
 ```go
 txn := db.BeginTransaction()
 
@@ -108,7 +112,7 @@ txn.Remove() // txn now no longer usable nor existent
 ```
 
 ### Recovery
-If you have a populated WAL file in the data directory but no data you can use `RecoverFromWAL()` which will replay the WAL file and populate the LSM tree.
+If you have a populated WAL file in the data directory but no data you can use `RecoverFromWAL()` which will replay the WAL file and populate K4.
 
 #### Example
 ```go
