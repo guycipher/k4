@@ -149,3 +149,4 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 		hashFuncs: hashFuncs,
 	}, nil
 }
+
