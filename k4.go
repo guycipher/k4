@@ -227,7 +227,6 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 	// Start the background wal writer
 	k4.wg.Add(1)
 	go k4.backgroundWalWriter() // start the background wal writer
-
 	k4.printLog("Background WAL writer started")
 
 	// Start the background flusher
@@ -313,32 +312,44 @@ func (k4 *K4) backgroundWalWriter() {
 	defer k4.wg.Done() // Defer completion of routine
 
 	for {
-		k4.walQueueLock.Lock() // lock up the wal queue
-
-		if len(k4.walQueue) > 0 { // Check if there are operations in the wal queue
-			op := k4.walQueue[0]          // Get the first operation
-			k4.walQueue = k4.walQueue[1:] // Remove the first operation
-			k4.walQueueLock.Unlock()      // Unlock the wal queue
-
-			// Serialize operation
-			data := serializeOp(op.Op, op.Key, op.Value)
-
-			// Write to WAL
-			_, err := k4.wal.Write(data)
-			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err)) // Log error
-			}
-		} else {
-			k4.walQueueLock.Unlock()          // Unlock the wal queue
-			time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
-			// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
-		}
-
 		select {
 		case <-k4.exit:
+			// Escalate what hasn't been written to the wal
+			k4.walQueueLock.Lock() // lock the wal queue
+			for _, op := range k4.walQueue {
+				data := serializeOp(op.Op, op.Key, op.Value)
+				_, err := k4.wal.Write(data)
+				if err != nil {
+					k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err))
+				}
+			}
+
+			k4.walQueueLock.Unlock() // unlock the wal queue
+
+			// break out
 			return
+
 		default:
-			continue
+			k4.walQueueLock.Lock() // lock up the wal queue
+
+			if len(k4.walQueue) > 0 { // Check if there are operations in the wal queue
+				op := k4.walQueue[0]          // Get the first operation
+				k4.walQueue = k4.walQueue[1:] // Remove the first operation
+				k4.walQueueLock.Unlock()      // Unlock the wal queue
+
+				// Serialize operation
+				data := serializeOp(op.Op, op.Key, op.Value)
+
+				// Write to WAL
+				_, err := k4.wal.Write(data)
+				if err != nil {
+					k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err)) // Log error
+				}
+			} else {
+				k4.walQueueLock.Unlock()          // Unlock the wal queue
+				time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
+				// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
+			}
 		}
 	}
 }
