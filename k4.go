@@ -1176,6 +1176,10 @@ func (sstable *SSTable) get(key []byte) ([]byte, error) {
 
 // Put puts a key-value pair into K4
 func (k4 *K4) Put(key, value []byte, ttl *time.Duration) error {
+	// Check if key or value is nil
+	if key == nil || value == nil {
+		return fmt.Errorf("key or value cannot be nil")
+	}
 
 	// Lock memtable
 	k4.memtableLock.Lock()
@@ -1199,6 +1203,11 @@ func (k4 *K4) Put(key, value []byte, ttl *time.Duration) error {
 
 // Delete deletes a key from K4
 func (k4 *K4) Delete(key []byte) error {
+	// Check if key is nil
+	if key == nil {
+		return fmt.Errorf("key cannot be nil")
+	}
+
 	// We simply put a tombstone value for the key
 	return k4.Put(key, []byte(TOMBSTONE_VALUE), nil)
 }
