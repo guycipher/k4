@@ -573,36 +573,42 @@ func sstableFilename(index int) string {
 // newSSTableIterator creates a new SSTable iterator
 func newSSTableIterator(pager *pager.Pager, compressed bool) *SSTableIterator {
 	return &SSTableIterator{
-		pager:       pager,
-		currentPage: 1, // skip the first page which is the bloom filter
-		lastPage:    int(pager.Count() - 1),
-		compressed:  compressed,
+		pager:       pager,                  // the pager for the sstable file
+		currentPage: 1,                      // skip the first page which is the bloom filter
+		lastPage:    int(pager.Count() - 1), // the last page in the sstable
+		compressed:  compressed,             // whether the sstable is compressed
 	}
 }
 
 // next returns true if there is another key-value pair in the SSTable
 func (it *SSTableIterator) next() bool {
+	// We check if the current page is greater than the last page
+	// if so we return false
 	if it.currentPage > it.lastPage {
 		return false
 	}
 
-	it.currentPage++
+	it.currentPage++ // increment the current page
 	return true
 }
 
 // current returns the current key-value pair in the SSTable
 func (it *SSTableIterator) current() ([]byte, []byte) {
+	// Get the current page
 	data, err := it.pager.GetPage(int64(it.currentPage))
 	if err != nil {
 		return nil, nil
 	}
 
+	// Deserialize key-value pair
 	key, value, err := deserializeKv(data)
 	if err != nil {
 		return nil, nil
 	}
 
+	// Check for compression
 	if it.compressed {
+		// If so we decompress the key and value
 		key, value, err = decompressKeyValue(key, value)
 		if err != nil {
 			return nil, nil
@@ -614,14 +620,28 @@ func (it *SSTableIterator) current() ([]byte, []byte) {
 
 // currentKey returns the current key in the SSTable
 func (it *SSTableIterator) currentKey() []byte {
+	// Get the current page
 	data, err := it.pager.GetPage(int64(it.currentPage))
 	if err != nil {
 		return nil
 	}
-	key, _, err := deserializeKv(data)
+
+	// Deserialize key-value pair
+	key, value, err := deserializeKv(data)
 	if err != nil {
 		return nil
 	}
+
+	// Check for compression
+	if it.compressed {
+		// If so we decompress the key
+		key, _, err = decompressKeyValue(key, value)
+		if err != nil {
+			return nil
+		}
+
+	}
+
 	return key
 }
 
@@ -1484,17 +1504,24 @@ func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
 
 // append method to add a new KeyValue to the array
 func (kva *KeyValueArray) append(kv *KV) {
-	*kva = append(*kva, kv)
+	*kva = append(*kva, kv) // Append the KeyValue to the array
 }
 
 // binarySearch method to find a KeyValue by key using binary search
 func (kva KeyValueArray) binarySearch(key []byte) (*KV, bool) {
+	// returns true if the key at index i is greater than or equal to the search key
 	index := sort.Search(len(kva), func(i int) bool {
 		return bytes.Compare(kva[i].Key, key) >= 0
 	})
+
+	// check if the index is within the bounds of the array and if the key at the
+	// found index matches the search key
 	if index < len(kva) && bytes.Equal(kva[index].Key, key) {
+		// If the key is found, return the KeyValue pair and true.
 		return kva[index], true
 	}
+
+	// if the key is not found, return nil and false
 	return nil, false
 }
 
@@ -1509,23 +1536,25 @@ func (k4 *K4) backgroundFlusher() {
 		select {
 		case <-k4.exit:
 			// Escalate the remaining memtables in the flush queue
-			k4.flushQueueLock.Lock()
+			k4.flushQueueLock.Lock() // Lock flush queue
 			for _, memtable := range k4.flushQueue {
-				err := k4.flushMemtable(memtable)
+				err := k4.flushMemtable(memtable) // We flush every memtable in the queue to disk in the escalation
 				if err != nil {
 					k4.printLog("Error flushing memtable: " + err.Error())
 				}
 			}
-			k4.flushQueue = nil
-			k4.flushQueueLock.Unlock()
+
+			k4.flushQueue = nil        // nil it up
+			k4.flushQueueLock.Unlock() // unlock the flush queue
 			return
 		default:
 			// Lock flush queue
 			k4.flushQueueLock.Lock()
-			if len(k4.flushQueue) > 0 {
-				memtable := k4.flushQueue[0] // pop a memtable from the flush queue
-				k4.flushQueue = k4.flushQueue[1:]
-				k4.flushQueueLock.Unlock() // Unlock flush queue
+
+			if len(k4.flushQueue) > 0 { // Check if there is any memtable in the flush queue
+				memtable := k4.flushQueue[0]      // pop a memtable from the flush queue
+				k4.flushQueue = k4.flushQueue[1:] // shift 1
+				k4.flushQueueLock.Unlock()        // unlock flush queue
 
 				// Flush memtable
 				err := k4.flushMemtable(memtable)
@@ -1534,7 +1563,7 @@ func (k4 *K4) backgroundFlusher() {
 				}
 
 			} else {
-				k4.flushQueueLock.Unlock()
+				k4.flushQueueLock.Unlock()        // unlock flush queue
 				time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
 				// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
 			}
@@ -1548,19 +1577,19 @@ func (k4 *K4) backgroundFlusher() {
 func (k4 *K4) backgroundCompactor() {
 	k4.printLog("Background compactor started")
 
-	defer k4.wg.Done()
+	defer k4.wg.Done() // We defer the wait group done to signal the wait group that we are done, so on return the done signal is sent
 
 	for {
 		select {
-		case <-k4.exit:
+		case <-k4.exit: // If we get a signal to exit we break out of the loop
 			return
 		default:
-			if time.Since(k4.lastCompaction).Seconds() > float64(k4.compactionInterval) {
-				err := k4.compact()
+			if time.Since(k4.lastCompaction).Seconds() > float64(k4.compactionInterval) { // We check if it is time to compact
+				err := k4.compact() // We compact the heck out of them sstables
 				if err != nil {
 					k4.printLog("Error compacting sstables: " + err.Error())
 				}
-				k4.lastCompaction = time.Now()
+				k4.lastCompaction = time.Now() // We set the last compaction time too now to reset the timer
 			} else {
 				time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
 				// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
