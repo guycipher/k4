@@ -1214,6 +1214,11 @@ func (k4 *K4) Delete(key []byte) error {
 
 // NGet gets a key from K4 and returns a map of key-value pairs
 func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
+	// Check if key is nil
+	if key == nil {
+		return nil, fmt.Errorf("key cannot be nil")
+	}
+
 	result := &KeyValueArray{}
 
 	// Check memtable
@@ -1259,6 +1264,11 @@ func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
 
 // GreaterThan gets all keys greater than a key from K4 and returns a map of key-value pairs
 func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error) {
+	// Check if key is nil
+	if key == nil {
+		return nil, fmt.Errorf("key cannot be nil")
+	}
+
 	result := &KeyValueArray{}
 
 	// Check memtable
@@ -1304,6 +1314,11 @@ func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error) {
 
 // GreaterThanEq queries keys greater than or equal to a key from K4
 func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error) {
+	// Check if key is nil
+	if key == nil {
+		return nil, fmt.Errorf("key cannot be nil")
+	}
+
 	result := &KeyValueArray{}
 
 	// Check memtable
@@ -1349,6 +1364,11 @@ func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error) {
 
 // LessThan gets all keys less than a key from K4 and returns a map of key-value pairs
 func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error) {
+	// Check if key is nil
+	if key == nil {
+		return nil, fmt.Errorf("key cannot be nil")
+	}
+
 	result := &KeyValueArray{}
 
 	// Check memtable
@@ -1394,6 +1414,11 @@ func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error) {
 
 // LessThanEq queries keys less than or equal to a key from K4
 func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error) {
+	// Check if key is nil
+	if key == nil {
+		return nil, fmt.Errorf("key cannot be nil")
+	}
+
 	result := &KeyValueArray{}
 
 	// Check memtable
@@ -1439,6 +1464,11 @@ func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error) {
 
 // Range queries keys in a range from K4
 func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
+	// Check if startKey or endKey is nil
+	if startKey == nil || endKey == nil {
+		return nil, fmt.Errorf("startKey and or endKey cannot be nil")
+	}
+
 	result := &KeyValueArray{}
 
 	// Check memtable
@@ -1488,6 +1518,11 @@ func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
 
 // NRange queries keys in a range from K4 and returns a map of key-value pairs
 func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
+	// Check if startKey or endKey is nil
+	if startKey == nil || endKey == nil {
+		return nil, fmt.Errorf("startKey and or endKey cannot be nil")
+	}
+
 	result := &KeyValueArray{}
 
 	// Check memtable
