@@ -763,7 +763,7 @@ func (k4 *K4) compact() error {
 			// then we will add the key value pairs to the sstable
 
 			// create a bloom filter
-			bf := bloomfilter.NewBloomFilter(1000000, 8)
+			bf := bloomfilter.NewBloomFilter(1000000, 8) // i
 
 			// create a new sstable
 			newSstable, err := k4.createSSTable(true)
@@ -780,9 +780,9 @@ func (k4 *K4) compact() error {
 				return
 			}
 
-			// add all the keys to the bloom filter
+			// Create a new iterator for the ith and (i+1)th sstable
 			it := newSSTableIterator(sstable1.pager, k4.compress)
-			for it.next() {
+			for it.next() { // Iterate and add keys to the bloom filter
 				key := it.currentKey()
 				bf.Add(key)
 			}
@@ -809,6 +809,8 @@ func (k4 *K4) compact() error {
 
 			// iterate over the ith and (i+1)th sstable
 			it = newSSTableIterator(sstable1.pager, k4.compress)
+
+			// iterate over the ith sstable
 			for it.next() {
 				key, value := it.current()
 
@@ -834,6 +836,7 @@ func (k4 *K4) compact() error {
 
 			it = newSSTableIterator(sstable2.pager, k4.compress)
 
+			// iterate over the (i+1)th sstable
 			for it.next() {
 				key, value := it.current()
 
@@ -857,7 +860,7 @@ func (k4 *K4) compact() error {
 				}
 			}
 
-			// Remove the ith and (i+1)th sstable
+			// Close the ith and (i+1)th sstable pagers
 			err = sstable1.pager.Close()
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to close sstable: %v", err))
@@ -892,7 +895,7 @@ func (k4 *K4) compact() error {
 				k4.printLog(fmt.Sprintf("Failed to remove sstable: %v", err))
 				return
 			}
-		}(wg, i, newSstablesLock, &newSStables, sstableIndexesToRemoveLock, &sstableIndexesToRemove)
+		}(wg, i, newSstablesLock, &newSStables, sstableIndexesToRemoveLock, &sstableIndexesToRemove) // Pass the wait group, the index, the lock for new sstables, the new sstables, the lock for sstable indexes to remove, and the sstable indexes to remove
 
 	}
 
