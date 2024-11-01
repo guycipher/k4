@@ -733,7 +733,13 @@ func (k4 *K4) compact() error {
 
 	wg := &sync.WaitGroup{} // wait group for the routines
 
-	// we start from oldest sstables
+	sstableIndexesToRemove := make([]int, 0) // indexes of sstables to remove
+	// After all the pairs are merged we will remove the sstables that were merged
+	// We do this after the fact because we don't want to remove sstables while they are being merged
+
+	newSStables := make([]*SSTable, 0) // new sstables to add
+
+	// for each pair we will spin up a routine
 	for i := 0; i < pairs; i++ {
 
 		wg.Add(1)
@@ -853,11 +859,11 @@ func (k4 *K4) compact() error {
 				return
 			}
 
-			// remove sstables from the list
-			k4.sstables = append(k4.sstables[:i], k4.sstables[i+2:]...)
+			// add merged sstable indexes to the list of sstables to remove
+			sstableIndexesToRemove = append(sstableIndexesToRemove, i, i+1)
 
 			// Append SSTable to list of SSTables
-			k4.sstables = append(k4.sstables, newSstable)
+			newSStables = append(newSStables, newSstable)
 
 			// remove the paired sstables from the directory
 			err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i))
@@ -876,6 +882,15 @@ func (k4 *K4) compact() error {
 	}
 
 	wg.Wait() // wait for all the routines to finish
+
+	// Remove the sstables that were merged
+	sort.Sort(sort.Reverse(sort.IntSlice(sstableIndexesToRemove)))
+	for _, index := range sstableIndexesToRemove {
+		k4.sstables = append(k4.sstables[:index], k4.sstables[index+1:]...)
+	}
+
+	// Append the new sstables to the list of sstables
+	k4.sstables = append(k4.sstables, newSStables...)
 
 	k4.printLog("Compaction completed")
 
