@@ -510,9 +510,14 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// add all the keys to the bloom filter
 	for it.Next() {
 
-		key, _ := it.Current()
+		key, val := it.Current()
 		if key == nil {
 			continue
+		}
+
+		// Check if tombstone
+		if bytes.Compare(val, []byte(TOMBSTONE_VALUE)) == 0 {
+			continue // skip tombstones
 		}
 
 		bf.Add(key)
