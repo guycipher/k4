@@ -721,130 +721,156 @@ func (k4 *K4) compact() error {
 	// we will figure out how many pairs we can make
 	pairs := len(k4.sstables) / 2
 
+	// for each pair we spin up a routine
+	// each routine will merge the ith sstable with the (i+1)th sstable
+	// this is called multi-threaded compaction
+	// we will wait for all the routines to finish before we return compaction is done
+
+	wg := &sync.WaitGroup{} // wait group for the routines
+
 	// we start from oldest sstables
 	for i := 0; i < pairs; i++ {
-		// we will merge the ith sstable with the (i+1)th sstable
-		// we will create a new sstable and write the merged data to it
-		// then we will remove the ith and (i+1)th sstable
-		// then we will add the new sstable to the list of sstables
 
-		// we will create a bloom filter which will be on initial pages of sstable
-		// we will add all the keys to the bloom filter
-		// then we will add the key value pairs to the sstable
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-		// create a bloom filter
-		bf := bloomfilter.NewBloomFilter(1000000, 8)
+			// we will merge the ith sstable with the (i+1)th sstable
+			// we will create a new sstable and write the merged data to it
+			// then we will remove the ith and (i+1)th sstable
+			// then we will add the new sstable to the list of sstables
 
-		// create a new sstable
-		newSstable, err := k4.createSSTable()
-		if err != nil {
-			return err
-		}
+			// we will create a bloom filter which will be on initial pages of sstable
+			// we will add all the keys to the bloom filter
+			// then we will add the key value pairs to the sstable
 
-		// get the ith and (i+1)th sstable
-		sstable1 := k4.sstables[i]
-		sstable2 := k4.sstables[i+1]
+			// create a bloom filter
+			bf := bloomfilter.NewBloomFilter(1000000, 8)
 
-		// add all the keys to the bloom filter
-		it := newSSTableIterator(sstable1.pager, k4.compress)
-		for it.next() {
-			key := it.currentKey()
-			bf.Add(key)
-		}
+			// create a new sstable
+			newSstable, err := k4.createSSTable()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to create sstable: %v", err))
+				return
+			}
 
-		it = newSSTableIterator(sstable2.pager, k4.compress)
-		for it.next() {
-			key := it.currentKey()
-			bf.Add(key)
-		}
+			// get the ith and (i+1)th sstable
+			sstable1 := k4.sstables[i]
+			sstable2 := k4.sstables[i+1]
 
-		// serialize the bloom filter
-		bfData, err := bf.Serialize()
-		if err != nil {
-			return err
-		}
+			// add all the keys to the bloom filter
+			it := newSSTableIterator(sstable1.pager, k4.compress)
+			for it.next() {
+				key := it.currentKey()
+				bf.Add(key)
+			}
 
-		// Write the bloom filter to the SSTable
-		_, err = newSstable.pager.Write(bfData)
-		if err != nil {
-			return err
-		}
+			it = newSSTableIterator(sstable2.pager, k4.compress)
+			for it.next() {
+				key := it.currentKey()
+				bf.Add(key)
+			}
 
-		// iterate over the ith and (i+1)th sstable
-		it = newSSTableIterator(sstable1.pager, k4.compress)
-		for it.next() {
-			key, value := it.current()
+			// serialize the bloom filter
+			bfData, err := bf.Serialize()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to serialize bloom filter: %v", err))
+				return
+			}
 
-			// Check for compression
-			if k4.compress {
-				key, value, err = compressKeyValue(key, value)
+			// Write the bloom filter to the SSTable
+			_, err = newSstable.pager.Write(bfData)
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to write to sstable: %v", err))
+				return
+			}
+
+			// iterate over the ith and (i+1)th sstable
+			it = newSSTableIterator(sstable1.pager, k4.compress)
+			for it.next() {
+				key, value := it.current()
+
+				// Check for compression
+				if k4.compress {
+					key, value, err = compressKeyValue(key, value)
+					if err != nil {
+						k4.printLog(fmt.Sprintf("Failed to compress key-value pair: %v", err))
+						return
+					}
+				}
+
+				// Serialize key-value pair
+				data := serializeKv(key, value)
+
+				// Write to SSTable
+				_, err := newSstable.pager.Write(data)
 				if err != nil {
-					return err
+					k4.printLog(fmt.Sprintf("Failed to write to sstable: %v", err))
+					return
 				}
 			}
 
-			// Serialize key-value pair
-			data := serializeKv(key, value)
+			it = newSSTableIterator(sstable2.pager, k4.compress)
 
-			// Write to SSTable
-			_, err := newSstable.pager.Write(data)
-			if err != nil {
-				return err
-			}
-		}
+			for it.next() {
+				key, value := it.current()
 
-		it = newSSTableIterator(sstable2.pager, k4.compress)
+				// Check for compression
+				if k4.compress {
+					key, value, err = compressKeyValue(key, value)
+					if err != nil {
+						k4.printLog(fmt.Sprintf("Failed to compress key-value pair: %v", err))
+						return
+					}
+				}
 
-		for it.next() {
-			key, value := it.current()
+				// Serialize key-value pair
+				data := serializeKv(key, value)
 
-			// Check for compression
-			if k4.compress {
-				key, value, err = compressKeyValue(key, value)
+				// Write to SSTable
+				_, err = newSstable.pager.Write(data)
 				if err != nil {
-					return err
+					k4.printLog(fmt.Sprintf("Failed to write to sstable: %v", err))
+					return
 				}
 			}
 
-			// Serialize key-value pair
-			data := serializeKv(key, value)
-
-			// Write to SSTable
-			_, err := newSstable.pager.Write(data)
+			// Remove the ith and (i+1)th sstable
+			err = sstable1.pager.Close()
 			if err != nil {
-				return err
+				k4.printLog(fmt.Sprintf("Failed to close sstable: %v", err))
+				return
 			}
-		}
 
-		// Remove the ith and (i+1)th sstable
-		err = sstable1.pager.Close()
-		if err != nil {
-			return err
-		}
+			err = sstable2.pager.Close()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to close sstable: %v", err))
+				return
+			}
 
-		err = sstable2.pager.Close()
-		if err != nil {
-			return err
-		}
+			// remove sstables from the list
+			k4.sstables = append(k4.sstables[:i], k4.sstables[i+2:]...)
 
-		// remove sstables from the list
-		k4.sstables = append(k4.sstables[:i], k4.sstables[i+2:]...)
+			// Append SSTable to list of SSTables
+			k4.sstables = append(k4.sstables, newSstable)
 
-		// Append SSTable to list of SSTables
-		k4.sstables = append(k4.sstables, newSstable)
+			// remove the paired sstables from the directory
+			err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i))
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to remove sstable: %v", err))
+				return
+			}
 
-		// remove the paired sstables from the directory
-		err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i))
-		if err != nil {
-			return err
-		}
-
-		err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i+1))
-		if err != nil {
-			return err
-		}
+			err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i+1))
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to remove sstable: %v", err))
+				return
+			}
+		}()
 
 	}
+
+	wg.Wait() // wait for all the routines to finish
 
 	k4.printLog("Compaction completed")
 
