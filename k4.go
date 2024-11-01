@@ -734,10 +734,12 @@ func (k4 *K4) compact() error {
 	wg := &sync.WaitGroup{} // wait group for the routines
 
 	sstableIndexesToRemove := make([]int, 0) // indexes of sstables to remove
+	sstableIndexesToRemoveLock := &sync.Mutex{}
 	// After all the pairs are merged we will remove the sstables that were merged
 	// We do this after the fact because we don't want to remove sstables while they are being merged
 
 	newSStables := make([]*SSTable, 0) // new sstables to add
+	newSstablesLock := &sync.Mutex{}   // lock for new sstables
 
 	// for each pair we will spin up a routine
 	for i := 0; i < pairs; i++ {
@@ -860,10 +862,14 @@ func (k4 *K4) compact() error {
 			}
 
 			// add merged sstable indexes to the list of sstables to remove
+			sstableIndexesToRemoveLock.Lock()
 			sstableIndexesToRemove = append(sstableIndexesToRemove, i, i+1)
+			sstableIndexesToRemoveLock.Unlock()
 
 			// Append SSTable to list of SSTables
+			newSstablesLock.Lock()
 			newSStables = append(newSStables, newSstable)
+			newSstablesLock.Unlock()
 
 			// remove the paired sstables from the directory
 			err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i))
@@ -887,7 +893,8 @@ func (k4 *K4) compact() error {
 	sort.Sort(sort.Reverse(sort.IntSlice(sstableIndexesToRemove)))
 	for _, index := range sstableIndexesToRemove {
 		k4.sstables = append(k4.sstables[:index], k4.sstables[index+1:]...)
-	}
+	} // we are sorting the indexes in reverse order before removing them ensures that you remove elements starting from the highest index.
+	// This way, the removal of an element does not affect the indexes of the elements that are yet to be removed
 
 	// Append the new sstables to the list of sstables
 	k4.sstables = append(k4.sstables, newSStables...)
