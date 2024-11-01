@@ -221,6 +221,53 @@ func TestCompaction(t *testing.T) {
 	}
 }
 
+func TestCompaction2(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 2764/4, 2, true, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+
+	for i := 0; i < 200; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		err = k4.Put(key, value, nil)
+		if err != nil {
+			k4.Close()
+			t.Fatalf("Failed to put key-value: %v", err)
+		}
+
+	}
+
+	time.Sleep(3 * time.Second)
+
+	k4.Close()
+
+	k4, err = Open(dir, 1024*1024, 2, false, false)
+	if err != nil {
+		t.Fatalf("Failed to reopen K4: %v", err)
+	}
+	defer k4.Close()
+
+	// get all keys
+	for i := 0; i < 200; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		got, err := k4.Get(key)
+		if err != nil {
+			t.Fatalf("Failed to get key: %v", err)
+		}
+
+		if !bytes.Equal(got, value) {
+			t.Fatalf("Expected value %s, got %s", value, got)
+		}
+	}
+}
+
 func TestTransactionCommit(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)

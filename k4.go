@@ -492,7 +492,7 @@ func (k4 *K4) appendMemtableToFlushQueue() {
 func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	k4.printLog("Flushing memtable off flush queue")
 	// Create SSTable
-	sstable, err := k4.createSSTable()
+	sstable, err := k4.createSSTable(false)
 	if err != nil {
 		return err
 	}
@@ -573,15 +573,20 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 }
 
 // createSSTable creates an SSTable
-func (k4 *K4) createSSTable() (*SSTable, error) {
+func (k4 *K4) createSSTable(isLocked bool) (*SSTable, error) {
 	// Create SSTable file
 	// Lock the sstables
-	k4.sstablesLock.Lock()
+
+	// Check if locked or not
+	if !isLocked {
+		k4.sstablesLock.RLock()
+		k4.sstablesLock.RUnlock() // We lock the sstables to gather the length of the sstables for filename
+	}
+
 	sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
 	}
-	k4.sstablesLock.Unlock() // We lock the sstables to gather the length of the sstables for filename
 
 	// Create SSTable
 	return &SSTable{
@@ -742,11 +747,11 @@ func (k4 *K4) compact() error {
 	newSstablesLock := &sync.Mutex{}   // lock for new sstables
 
 	// for each pair we will spin up a routine
-	for i := 0; i < pairs; i++ {
+	for i := 0; i < pairs*2; i += 2 {
 
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		go func(wwg *sync.WaitGroup, ii int, newSStablesLock *sync.Mutex, newSStables *[]*SSTable, sstableIndexesToRemoveLock *sync.Mutex, sstableIndexesToRemove *[]int) {
+			defer wwg.Done()
 
 			// we will merge the ith sstable with the (i+1)th sstable
 			// we will create a new sstable and write the merged data to it
@@ -761,15 +766,19 @@ func (k4 *K4) compact() error {
 			bf := bloomfilter.NewBloomFilter(1000000, 8)
 
 			// create a new sstable
-			newSstable, err := k4.createSSTable()
+			newSstable, err := k4.createSSTable(true)
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to create sstable: %v", err))
 				return
 			}
 
 			// get the ith and (i+1)th sstable
-			sstable1 := k4.sstables[i]
-			sstable2 := k4.sstables[i+1]
+			sstable1 := k4.sstables[ii]
+			sstable2 := k4.sstables[ii+1]
+
+			if sstable1 == nil || sstable2 == nil {
+				return
+			}
 
 			// add all the keys to the bloom filter
 			it := newSSTableIterator(sstable1.pager, k4.compress)
@@ -863,12 +872,12 @@ func (k4 *K4) compact() error {
 
 			// add merged sstable indexes to the list of sstables to remove
 			sstableIndexesToRemoveLock.Lock()
-			sstableIndexesToRemove = append(sstableIndexesToRemove, i, i+1)
+			*sstableIndexesToRemove = append(*sstableIndexesToRemove, ii, ii+1)
 			sstableIndexesToRemoveLock.Unlock()
 
 			// Append SSTable to list of SSTables
 			newSstablesLock.Lock()
-			newSStables = append(newSStables, newSstable)
+			*newSStables = append(*newSStables, newSstable)
 			newSstablesLock.Unlock()
 
 			// remove the paired sstables from the directory
@@ -883,7 +892,7 @@ func (k4 *K4) compact() error {
 				k4.printLog(fmt.Sprintf("Failed to remove sstable: %v", err))
 				return
 			}
-		}()
+		}(wg, i, newSstablesLock, &newSStables, sstableIndexesToRemoveLock, &sstableIndexesToRemove)
 
 	}
 
@@ -1678,6 +1687,7 @@ func (k4 *K4) backgroundFlusher() {
 			for _, memtable := range k4.flushQueue {
 				err := k4.flushMemtable(memtable) // We flush every memtable in the queue to disk in the escalation
 				if err != nil {
+					k4.flushQueueLock.Unlock()
 					k4.printLog("Error flushing memtable: " + err.Error())
 				}
 			}
