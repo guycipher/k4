@@ -893,7 +893,7 @@ func (k4 *K4) compact() error {
 	sort.Sort(sort.Reverse(sort.IntSlice(sstableIndexesToRemove)))
 	for _, index := range sstableIndexesToRemove {
 		k4.sstables = append(k4.sstables[:index], k4.sstables[index+1:]...)
-	} // we are sorting the indexes in reverse order before removing them ensures that you remove elements starting from the highest index.
+	} // we are sorting the indexes in reverse order before removing them ensures that we remove elements starting from the highest index.
 	// This way, the removal of an element does not affect the indexes of the elements that are yet to be removed
 
 	// Append the new sstables to the list of sstables
@@ -906,6 +906,8 @@ func (k4 *K4) compact() error {
 
 // RecoverFromWAL recovers K4 from a write ahead log
 func (k4 *K4) RecoverFromWAL() error {
+	k4.printLog("Starting to recover from write ahead log")
+
 	// Iterate over the write ahead log
 	it := newWALIterator(k4.wal, k4.compress)
 	for it.next() {
@@ -926,6 +928,8 @@ func (k4 *K4) RecoverFromWAL() error {
 			return fmt.Errorf("invalid operation")
 		}
 	}
+
+	k4.printLog("Recovery from write ahead log completed")
 
 	return nil
 
