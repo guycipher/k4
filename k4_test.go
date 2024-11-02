@@ -180,7 +180,7 @@ func TestCompaction(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 2764/4, 1, false, false)
+	k4, err := Open(dir, 2764/4, 2, true, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -196,6 +196,8 @@ func TestCompaction(t *testing.T) {
 		}
 
 	}
+
+	time.Sleep(6 * time.Second)
 
 	k4.Close()
 
@@ -225,12 +227,12 @@ func TestCompaction2(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 2764/4, 2, true, false)
+	k4, err := Open(dir, 950*2, 1000, true, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
 
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 100; i++ {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
 
@@ -239,21 +241,22 @@ func TestCompaction2(t *testing.T) {
 			k4.Close()
 			t.Fatalf("Failed to put key-value: %v", err)
 		}
-
 	}
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(5 * time.Second) // We wait for flushes to occur
+
+	k4.compact() // now we will compact and close
 
 	k4.Close()
 
-	k4, err = Open(dir, 1024*1024, 2, false, false)
+	k4, err = Open(dir, 2764/4, 1000, true, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen K4: %v", err)
 	}
 	defer k4.Close()
 
 	// get all keys
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 100; i++ {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
 

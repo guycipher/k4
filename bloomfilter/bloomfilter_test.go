@@ -33,6 +33,7 @@ package bloomfilter
 import (
 	"fmt"
 	"github.com/guycipher/k4/fuzz"
+	"github.com/guycipher/k4/pager"
 	"os"
 	"testing"
 	"time"
@@ -295,19 +296,19 @@ func TestCheck4(t *testing.T) {
 	}
 
 	// We write to file
-	f, err := os.OpenFile("bloomfilter.test", os.O_CREATE|os.O_RDWR, 0644)
+	p, err := pager.OpenPager("bloomfilter.test", os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		t.Fatalf("Failed to open file: %v", err)
 	}
 
 	defer os.Remove("bloomfilter.test")
-
-	f.WriteAt(serialized, 0)
+	defer p.Close()
+	p.Write(serialized)
 
 	// We read from file
 	serialized = make([]byte, len(serialized))
 
-	_, err = f.ReadAt(serialized, 0)
+	_, err = p.GetPage(0)
 	if err != nil {
 		t.Fatalf("Failed to read from file: %v", err)
 	}

@@ -45,7 +45,6 @@ More benchmarks coming comparing against other storage engines.
 - TTL support (time to live).  Keys can be set to expire after a certain time duration.
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - Background flushing and compaction operations for less blocking on read and write operations
-- Multithreaded parallel compaction
 - No dependencies
 
 

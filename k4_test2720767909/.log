@@ -1,0 +1,16 @@
+2024/11/01 22:11:51 Background WAL writer started
+2024/11/01 22:11:51 Background flusher started
+2024/11/01 22:11:51 Background compactor started
+2024/11/01 22:11:51 K4 opened successfully
+2024/11/01 22:11:51 Background compactor started
+2024/11/01 22:11:51 Flushing memtable off flush queue
+2024/11/01 22:11:51 Flushed memtable
+2024/11/01 22:11:51 Flushing memtable off flush queue
+2024/11/01 22:11:51 Flushed memtable
+2024/11/01 22:11:51 Flushing memtable off flush queue
+2024/11/01 22:11:51 Flushed memtable
+2024/11/01 22:11:53 Starting compaction
+2024/11/01 22:11:57 Closing up
+2024/11/01 22:11:57 Memtable is of size 108 bytes and must be flushed to disk
+2024/11/01 22:11:57 Waiting for background operations to finish
+2024/11/01 22:11:57 Flushing memtable off flush queue
