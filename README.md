@@ -43,6 +43,7 @@ More benchmarks coming comparing against other storage engines.
 - Granular page locking (sstables on scan are locked granularly)
 - Thread-safe (multiple readers, single writer)
 - TTL support (time to live).  Keys can be set to expire after a certain time duration.
+- Murmur3 inspired hashing on compression and bloom filter
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - Background flushing and compaction operations for less blocking on read and write operations
 - No dependencies
