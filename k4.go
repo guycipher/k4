@@ -491,14 +491,11 @@ func (k4 *K4) appendMemtableToFlushQueue() {
 func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	k4.printLog("Flushing memtable off flush queue")
 
-	// read lock sstables
-	k4.sstablesLock.RLock()
 	// Create SSTable
 	sstable, err := k4.createSSTable()
 	if err != nil {
 		return err
 	}
-	k4.sstablesLock.RUnlock() // unlock sstables
 
 	// Iterate over memtable and write to SSTable
 
@@ -508,7 +505,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// then we will add the key value pairs to the sstable
 
 	// create a bloom filter
-	bf := bloomfilter.NewBloomFilter(1000000, 8)
+	bf := bloomfilter.NewBloomFilter(100000, 8)
 
 	// add all the keys to the bloom filter
 	for it.Next() {
@@ -577,8 +574,27 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 
 // createSSTable creates an SSTable
 func (k4 *K4) createSSTable() (*SSTable, error) {
-	// Create SSTable file
+	k4.sstablesLock.RLock()
+	defer k4.sstablesLock.RUnlock()
 
+	// Create SSTable file
+	sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create SSTable
+	return &SSTable{
+		pager:      sstablePager,
+		lock:       &sync.RWMutex{},
+		compressed: k4.compress,
+	}, nil
+}
+
+// createSSTable creates an SSTable
+func (k4 *K4) createSSTableNoLock() (*SSTable, error) {
+
+	// Create SSTable file
 	sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, err
@@ -729,6 +745,10 @@ func (k4 *K4) compact() error {
 
 	// we start from oldest sstables
 	for i := 0; i < pairs*2; i += 2 {
+		if i+1 >= len(k4.sstables) {
+			break
+		}
+
 		// we will merge the ith sstable with the (i+1)th sstable
 		// we will create a new sstable and write the merged data to it
 		// then we will remove the ith and (i+1)th sstable
@@ -739,10 +759,11 @@ func (k4 *K4) compact() error {
 		// then we will add the key value pairs to the sstable
 
 		// create a bloom filter
-		bf := bloomfilter.NewBloomFilter(1000000, 8)
+
+		bf := bloomfilter.NewBloomFilter(100000, 8)
 
 		// create a new sstable
-		newSstable, err := k4.createSSTable()
+		newSstable, err := k4.createSSTableNoLock()
 		if err != nil {
 			return err
 		}

@@ -180,12 +180,12 @@ func TestCompaction(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 2764/4, 2, true, false)
+	k4, err := Open(dir, 12196/4, 2, true, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 500; i++ {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
 
@@ -197,7 +197,7 @@ func TestCompaction(t *testing.T) {
 
 	}
 
-	time.Sleep(6 * time.Second)
+	time.Sleep(8 * time.Second)
 
 	k4.Close()
 
@@ -208,7 +208,7 @@ func TestCompaction(t *testing.T) {
 	defer k4.Close()
 
 	// get all keys
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 500; i++ {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
 

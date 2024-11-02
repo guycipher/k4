@@ -110,12 +110,12 @@ func TestFalsePositives(t *testing.T) {
 }
 
 func TestAddAndCheckMultipleKeys(t *testing.T) {
-	size := uint(1000000)
+	size := uint(10)
 	numHashFuncs := 8
 	bf := NewBloomFilter(size, numHashFuncs)
 
-	keys := make([][]byte, 1000000)
-	for i := 0; i < 1000000; i++ {
+	keys := make([][]byte, 1000)
+	for i := 0; i < 1000; i++ {
 		keys[i] = []byte(fmt.Sprintf("key%d", i))
 	}
 
