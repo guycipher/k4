@@ -2,7 +2,7 @@
     <h1 align="left"><img width="128" src="graphics/k4.png"></h1>
 </div>
 
-K4 is an open-source, high-performance, transactional, and durable storage engine based on an LSM (Log-Structured Merge) tree architecture. This design optimizes high-speed reads and writes, making it ideal for modern data-intensive applications.
+K4 is an open-source, high-performance, transactional, and durable storage engine based on an LSM (Log-Structured Merge) tree architecture. This design optimizes high-speed writes, making it ideal for modern data-intensive applications.
 
 Currently available as a library for Go, K4 plans to offer bindings and foreign function interfaces (FFIs) for other languages in the future.
 
@@ -26,7 +26,7 @@ More benchmarks coming comparing against other storage engines.
 
 
 ### Features
-- High speed writes and reads
+- High speed writes.  Reads are also fast but writes are the primary focus.
 - Durability
 - Optimized for RAM and flash storage (SSD)
 - Variable length binary keys and values.  Keys and their values can be any length
