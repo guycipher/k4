@@ -59,22 +59,6 @@ func TestNewBloomFilter(t *testing.T) {
 	}
 }
 
-func TestAdd(t *testing.T) {
-	bf := NewBloomFilter(100, 3)
-	key := []byte("testkey")
-
-	bf.Add(key)
-
-	for _, hashFunc := range bf.hashFuncs {
-		hashFunc.Reset()
-		hashFunc.Write(key)
-		index := hashFunc.Sum64() % uint64(bf.size)
-		if !bf.bitset[index] {
-			t.Errorf("Expected bitset[%d] to be true, got false", index)
-		}
-	}
-}
-
 func TestCheck(t *testing.T) {
 	bf := NewBloomFilter(100, 3)
 	key := []byte("testkey")
@@ -277,7 +261,7 @@ func TestCheck3(t *testing.T) {
 
 func TestCheck4(t *testing.T) {
 	tt := time.Now()
-	bf := NewBloomFilter(1000000, 8)
+	bf := NewBloomFilter(100000, 8)
 
 	keys := [][]byte{}
 

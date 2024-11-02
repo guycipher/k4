@@ -33,15 +33,14 @@ package bloomfilter
 import (
 	"bytes"
 	"encoding/binary"
-	"hash"
-	"hash/fnv"
+	"github.com/guycipher/k4/murmur"
 )
 
 // BloomFilter is the data structure that represents a Bloom filter
 type BloomFilter struct {
 	bitset    []bool        // bitset
 	size      uint          // size of the Bloom filter
-	hashFuncs []hash.Hash64 // hash functions
+	hashFuncs []func([]byte, uint64) uint64 // hash functions
 }
 
 // NewBloomFilter initializes a new BloomFilter
@@ -49,11 +48,11 @@ func NewBloomFilter(size uint, numHashFuncs int) *BloomFilter {
 	bf := &BloomFilter{
 		bitset:    make([]bool, size),
 		size:      size,
-		hashFuncs: make([]hash.Hash64, numHashFuncs),
+		hashFuncs: make([]func([]byte, uint64) uint64, numHashFuncs),
 	}
 
 	for i := 0; i < numHashFuncs; i++ {
-		bf.hashFuncs[i] = fnv.New64()
+		bf.hashFuncs[i] = murmur.Hash64
 	}
 
 	return bf
@@ -62,9 +61,7 @@ func NewBloomFilter(size uint, numHashFuncs int) *BloomFilter {
 // Add adds a key to the BloomFilter
 func (bf *BloomFilter) Add(key []byte) {
 	for _, hashFunc := range bf.hashFuncs {
-		hashFunc.Reset()
-		hashFunc.Write(key)
-		index := hashFunc.Sum64() % uint64(bf.size)
+		index := hashFunc(key, 0) % uint64(bf.size)
 		bf.bitset[index] = true
 	}
 }
@@ -72,9 +69,7 @@ func (bf *BloomFilter) Add(key []byte) {
 // Check checks if a key is possibly in the BloomFilter
 func (bf *BloomFilter) Check(key []byte) bool {
 	for _, hashFunc := range bf.hashFuncs {
-		hashFunc.Reset()
-		hashFunc.Write(key)
-		index := hashFunc.Sum64() % uint64(bf.size)
+		index := hashFunc(key, 0) % uint64(bf.size)
 		if !bf.bitset[index] {
 			return false
 		}
@@ -138,9 +133,9 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 	}
 
 	// Reinitialize the hash functions
-	hashFuncs := make([]hash.Hash64, numHashFuncs)
+	hashFuncs := make([]func([]byte, uint64) uint64, numHashFuncs)
 	for i := 0; i < int(numHashFuncs); i++ {
-		hashFuncs[i] = fnv.New64()
+		hashFuncs[i] = murmur.Hash64
 	}
 
 	return &BloomFilter{

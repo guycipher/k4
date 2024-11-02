@@ -35,7 +35,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"hash/fnv"
+	"github.com/guycipher/k4/murmur"
 )
 
 // Compressor is the main compression package struct
@@ -57,14 +57,12 @@ func (c *Compressor) Compress(data []byte) []byte {
 	var compressed bytes.Buffer
 	dataLen := len(data)
 	i := 0
-	hashTable := make(map[uint32]int)
+	hashTable := make(map[uint64]int)
 
 	for i < dataLen {
 		matchLength, matchDistance := 0, 0
 		if i+2 < dataLen {
-			hash := fnv.New32a()
-			hash.Write(data[i : i+3])
-			hashKey := hash.Sum32()
+			hashKey := murmur.Hash64(data[i:i+3], 0)
 
 			if pos, found := hashTable[hashKey]; found && i-pos <= c.windowSize {
 				j := 0
@@ -96,7 +94,7 @@ func (c *Compressor) Decompress(data []byte) []byte {
 	var decompressed bytes.Buffer
 	dataLen := len(data)
 	i := 0
-	hashTable := make(map[uint32]int)
+	hashTable := make(map[uint64]int)
 
 	for i < dataLen {
 		var matchDistance uint16
@@ -115,9 +113,7 @@ func (c *Compressor) Decompress(data []byte) []byte {
 
 		// Update hash table with the new sequence
 		if decompressed.Len() >= 3 {
-			hash := fnv.New32a()
-			hash.Write(decompressed.Bytes()[decompressed.Len()-3:])
-			hashKey := hash.Sum32()
+			hashKey := murmur.Hash64(decompressed.Bytes()[decompressed.Len()-3:], 0)
 			hashTable[hashKey] = decompressed.Len() - 3
 		}
 	}
