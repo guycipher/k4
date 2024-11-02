@@ -49,12 +49,12 @@ More benchmarks coming comparing against other storage engines.
 
 
 ### Example usage
-Importing
 ```go
-import("github.com/guycipher/k4")
-```
+import (
+    "github.com/guycipher/k4"
+    "log"
+)
 
-```go
 func main() {
     var err error
     directory := "./data"

@@ -38,8 +38,8 @@ import (
 
 // BloomFilter is the data structure that represents a Bloom filter
 type BloomFilter struct {
-	bitset    []bool        // bitset
-	size      uint          // size of the Bloom filter
+	bitset    []bool                        // bitset
+	size      uint                          // size of the Bloom filter
 	hashFuncs []func([]byte, uint64) uint64 // hash functions
 }
 
@@ -96,7 +96,7 @@ func (bf *BloomFilter) Serialize() ([]byte, error) {
 	bitsetBytes := make([]byte, (bf.size+7)/8)
 	for i, bit := range bf.bitset {
 		if bit {
-			bitsetBytes[i/8] |= 1 << (i % 8)
+			bitsetBytes[i/8] |= 1 << (i % 8) // Set the i-th bit
 		}
 	}
 	if _, err := buf.Write(bitsetBytes); err != nil {
@@ -129,13 +129,13 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 	}
 	bitset := make([]bool, size)
 	for i := range bitset {
-		bitset[i] = (bitsetBytes[i/8] & (1 << (i % 8))) != 0
+		bitset[i] = (bitsetBytes[i/8] & (1 << (i % 8))) != 0 // Check if the i-th bit is set
 	}
 
 	// Reinitialize the hash functions
 	hashFuncs := make([]func([]byte, uint64) uint64, numHashFuncs)
 	for i := 0; i < int(numHashFuncs); i++ {
-		hashFuncs[i] = murmur.Hash64
+		hashFuncs[i] = murmur.Hash64 // Use murmur hash function
 	}
 
 	return &BloomFilter{
@@ -144,4 +144,3 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 		hashFuncs: hashFuncs,
 	}, nil
 }
-
