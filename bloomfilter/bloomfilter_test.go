@@ -261,7 +261,7 @@ func TestCheck3(t *testing.T) {
 
 func TestCheck4(t *testing.T) {
 	tt := time.Now()
-	bf := NewBloomFilter(100000, 8)
+	bf := NewBloomFilter(100, 8)
 
 	keys := [][]byte{}
 

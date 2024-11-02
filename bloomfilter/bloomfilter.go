@@ -60,6 +60,11 @@ func NewBloomFilter(size uint, numHashFuncs int) *BloomFilter {
 
 // Add adds a key to the BloomFilter
 func (bf *BloomFilter) Add(key []byte) {
+	// check if the BloomFilter needs to grow
+	if bf.shouldGrow() {
+		bf.resize(bf.size * 2)
+	}
+
 	for _, hashFunc := range bf.hashFuncs {
 		index := hashFunc(key, 0) % uint64(bf.size)
 		bf.bitset[index] = true
@@ -143,4 +148,31 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 		size:      uint(size),
 		hashFuncs: hashFuncs,
 	}, nil
+}
+
+// resize resizes the BloomFilter to a new size
+func (bf *BloomFilter) resize(newSize uint) {
+	newBitset := make([]bool, newSize)
+	for i := range bf.bitset {
+		if bf.bitset[i] {
+			for _, hashFunc := range bf.hashFuncs {
+				index := hashFunc([]byte{byte(i)}, 0) % uint64(newSize)
+				newBitset[index] = true
+			}
+		}
+	}
+	bf.bitset = newBitset
+	bf.size = newSize
+}
+
+// shouldGrow checks if the BloomFilter should grow
+func (bf *BloomFilter) shouldGrow() bool {
+	// we grow if more than 50% of the bits are set
+	setBits := 0
+	for _, bit := range bf.bitset {
+		if bit {
+			setBits++
+		}
+	}
+	return setBits > int(bf.size/2)
 }
