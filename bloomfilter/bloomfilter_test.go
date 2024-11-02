@@ -94,7 +94,7 @@ func TestFalsePositives(t *testing.T) {
 }
 
 func TestAddAndCheckMultipleKeys(t *testing.T) {
-	size := uint(10)
+	size := uint(10) // Small size for testing, the bloom filter should resize
 	numHashFuncs := 8
 	bf := NewBloomFilter(size, numHashFuncs)
 

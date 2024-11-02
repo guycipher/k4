@@ -28,27 +28,34 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 package bloomfilter
 
 import (
 	"bytes"
 	"encoding/binary"
 	"github.com/guycipher/k4/murmur"
+	"math"
 )
 
-// BloomFilter is the data structure that represents a Bloom filter
+const GROWTH_FACTOR = 1.5
+const SHOULD_GROW_THRESHOLD = 0.7
+
+// BloomFilter represents a Bloom filter.
 type BloomFilter struct {
-	bitset    []bool                        // bitset
-	size      uint                          // size of the Bloom filter
-	hashFuncs []func([]byte, uint64) uint64 // hash functions
+	bitset    []bool                        // Bitset for the Bloom filter
+	size      uint                          // Current size of the Bloom filter
+	hashFuncs []func([]byte, uint64) uint64 // Hash functions
+	keys      [][]byte                      // Original keys, maintained for resizing accuracy
 }
 
-// NewBloomFilter initializes a new BloomFilter
+// NewBloomFilter initializes a new BloomFilter.
 func NewBloomFilter(size uint, numHashFuncs int) *BloomFilter {
 	bf := &BloomFilter{
 		bitset:    make([]bool, size),
 		size:      size,
 		hashFuncs: make([]func([]byte, uint64) uint64, numHashFuncs),
+		keys:      make([][]byte, 0),
 	}
 
 	for i := 0; i < numHashFuncs; i++ {
@@ -58,20 +65,20 @@ func NewBloomFilter(size uint, numHashFuncs int) *BloomFilter {
 	return bf
 }
 
-// Add adds a key to the BloomFilter
+// Add adds a key to the BloomFilter.
 func (bf *BloomFilter) Add(key []byte) {
-	// check if the BloomFilter needs to grow
 	if bf.shouldGrow() {
-		bf.resize(bf.size * 2)
+		bf.resize(uint(float64(bf.size) * GROWTH_FACTOR)) // Resize using the growth factor
 	}
 
 	for _, hashFunc := range bf.hashFuncs {
 		index := hashFunc(key, 0) % uint64(bf.size)
 		bf.bitset[index] = true
 	}
+	bf.keys = append(bf.keys, key)
 }
 
-// Check checks if a key is possibly in the BloomFilter
+// Check checks if a key is possibly in the BloomFilter.
 func (bf *BloomFilter) Check(key []byte) bool {
 	for _, hashFunc := range bf.hashFuncs {
 		index := hashFunc(key, 0) % uint64(bf.size)
@@ -80,6 +87,43 @@ func (bf *BloomFilter) Check(key []byte) bool {
 		}
 	}
 	return true
+}
+
+// resize resizes the BloomFilter to a new size.
+func (bf *BloomFilter) resize(newSize uint) {
+	newBitset := make([]bool, newSize)
+
+	// Calculate the optimal number of hash functions
+	numKeys := len(bf.keys)
+	newNumHashFuncs := int(math.Ceil(float64(newSize) / float64(numKeys) * math.Ln2))
+
+	// Reinitialize the hash functions
+	bf.hashFuncs = make([]func([]byte, uint64) uint64, newNumHashFuncs)
+	for i := 0; i < newNumHashFuncs; i++ {
+		bf.hashFuncs[i] = murmur.Hash64
+	}
+
+	// Re-add all keys
+	for _, key := range bf.keys {
+		for _, hashFunc := range bf.hashFuncs {
+			index := hashFunc(key, 0) % uint64(newSize) // Use the new size
+			newBitset[index] = true
+		}
+	}
+
+	bf.bitset = newBitset
+	bf.size = newSize
+}
+
+// shouldGrow checks if the BloomFilter should grow.
+func (bf *BloomFilter) shouldGrow() bool {
+	setBits := 0
+	for _, bit := range bf.bitset {
+		if bit {
+			setBits++
+		}
+	}
+	return setBits > int(float64(bf.size)*SHOULD_GROW_THRESHOLD)
 }
 
 // Serialize serializes the BloomFilter to a byte slice
@@ -147,32 +191,6 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 		bitset:    bitset,
 		size:      uint(size),
 		hashFuncs: hashFuncs,
+		keys:      make([][]byte, 0), // Initialize keys slice
 	}, nil
-}
-
-// resize resizes the BloomFilter to a new size
-func (bf *BloomFilter) resize(newSize uint) {
-	newBitset := make([]bool, newSize)
-	for i := range bf.bitset {
-		if bf.bitset[i] {
-			for _, hashFunc := range bf.hashFuncs {
-				index := hashFunc([]byte{byte(i)}, 0) % uint64(newSize)
-				newBitset[index] = true
-			}
-		}
-	}
-	bf.bitset = newBitset
-	bf.size = newSize
-}
-
-// shouldGrow checks if the BloomFilter should grow
-func (bf *BloomFilter) shouldGrow() bool {
-	// we grow if more than 50% of the bits are set
-	setBits := 0
-	for _, bit := range bf.bitset {
-		if bit {
-			setBits++
-		}
-	}
-	return setBits > int(bf.size/2)
 }

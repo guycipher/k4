@@ -268,7 +268,6 @@ func (p *Pager) GetPage(pageID int64) ([]byte, error) {
 
 	// remove the null bytes
 	header = bytes.Trim(header, "\x00")
-	//data = bytes.Trim(data, "\x00")
 
 	// append the data to the result
 	result = append(result, data...)
