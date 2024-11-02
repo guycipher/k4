@@ -591,7 +591,8 @@ func (k4 *K4) createSSTable() (*SSTable, error) {
 	}, nil
 }
 
-// createSSTable creates an SSTable
+// createSSTableNoLock creates an SSTable without locking ssTables slice
+// (used mainly for functions that lock the ssTables slice)
 func (k4 *K4) createSSTableNoLock() (*SSTable, error) {
 
 	// Create SSTable file
