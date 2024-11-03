@@ -32,7 +32,9 @@
 package murmur
 
 import (
+	"github.com/guycipher/k4/fuzz"
 	"testing"
+	"time"
 )
 
 func TestHash64(t *testing.T) {
@@ -57,6 +59,24 @@ func TestHash64(t *testing.T) {
 	}
 }
 
+func TestHash64Many(t *testing.T) {
+	// Generate a large number of keys
+	keys := make([][]byte, 100000)
+	for i := range keys {
+		str, _ := fuzz.RandomString(10)
+		keys[i] = []byte(str)
+	}
+
+	tt := time.Now()
+	// Compute the hash of each key
+	for _, key := range keys {
+		_ = Hash64(key, 0)
+	}
+
+	t.Logf("Time taken to hash 100k keys %v", time.Since(tt))
+
+}
+
 func TestHash32(t *testing.T) {
 
 	tests := []struct {
@@ -76,5 +96,41 @@ func TestHash32(t *testing.T) {
 				t.Errorf("Hash32() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHash32Many(t *testing.T) {
+	// Generate a large number of keys
+	keys := make([][]byte, 100000)
+	for i := range keys {
+		str, _ := fuzz.RandomString(10)
+		keys[i] = []byte(str)
+	}
+
+	tt := time.Now()
+	// Compute the hash of each key
+	for _, key := range keys {
+		_ = Hash32(key, 0)
+	}
+
+	t.Logf("Time taken to hash 100k keys %v", time.Since(tt))
+
+}
+
+func BenchmarkHash64(b *testing.B) {
+	key := []byte("benchmarking 64-bit murmur3 hash function")
+	seed := uint64(0)
+
+	for i := 0; i < b.N; i++ {
+		_ = Hash64(key, seed)
+	}
+}
+
+func BenchmarkHash32(b *testing.B) {
+	key := []byte("benchmarking 32-bit murmur3 hash function")
+	seed := uint32(0)
+
+	for i := 0; i < b.N; i++ {
+		_ = Hash32(key, seed)
 	}
 }
