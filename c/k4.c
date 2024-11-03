@@ -42,6 +42,9 @@ void k4_close(K4* db) {
 }
 
 int k4_put(K4* db, const char* key, const char* value, int64_t ttl) {
+    if (ttl == -1) {
+        return Put((void*)db, key, value, NULL);
+    }
     return Put((void*)db, key, value, ttl);
 }
 
