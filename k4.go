@@ -132,6 +132,16 @@ type KV struct {
 // KeyValueArray type to hold a slice of KeyValue's
 type KeyValueArray []*KV
 
+// Iterator is a structure for an iterator which goes through
+// memtable and sstables.  First it goes through the memtable, then once exhausted goes through the sstables
+type Iterator struct {
+	memtableIter *skiplist.SkipListIterator
+	sstablesIter []*SSTableIterator
+	currentKey   []byte
+	currentValue []byte
+	iterIndex    int
+}
+
 // Open opens a new K4 instance at the specified directory.
 // will reopen the database if it already exists
 // directory - the directory where the database files are stored
@@ -1751,4 +1761,38 @@ func greaterThan(a, b []byte) bool {
 	}
 
 	return len(a) > len(b)
+}
+
+// NewIterator creates a new Iterator
+// ROUGH**
+func NewIterator(instance *K4) *Iterator {
+	sstablesIter := make([]*SSTableIterator, len(instance.sstables))
+	for i, sstable := range instance.sstables {
+		sstablesIter[i] = newSSTableIterator(sstable.pager, sstable.compressed)
+	}
+	return &Iterator{
+		memtableIter: skiplist.NewIterator(instance.memtable),
+		sstablesIter: sstablesIter,
+		iterIndex:    0,
+	}
+}
+
+// Next moves the iterator to the next key-value pair
+// ROUGH**
+func (it *Iterator) Next() ([]byte, []byte) {
+	// Check memtable
+	if it.memtableIter.Next() {
+		return it.memtableIter.Current()
+	}
+
+	// Check SSTables
+	for it.iterIndex < len(it.sstablesIter) {
+		if it.sstablesIter[it.iterIndex].next() {
+			return it.sstablesIter[it.iterIndex].current()
+		} else {
+			it.iterIndex++
+		}
+	}
+
+	return nil, nil
 }

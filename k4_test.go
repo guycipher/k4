@@ -225,6 +225,78 @@ func TestCompaction(t *testing.T) {
 	}
 }
 
+// @todo
+func TestIterator(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 12196/4, 2, true, false)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+
+	for i := 0; i < 500; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		err = k4.Put(key, value, nil)
+		if err != nil {
+			k4.Close()
+			t.Fatalf("Failed to put key-value: %v", err)
+		}
+
+	}
+
+	time.Sleep(8 * time.Second)
+
+	k4.Close()
+
+	k4, err = Open(dir, 1024*1024, 2, false, false)
+	if err != nil {
+		t.Fatalf("Failed to reopen K4: %v", err)
+	}
+	defer k4.Close()
+
+	// add more keys to also populate the memtable
+	for i := 500; i < 510; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		err = k4.Put(key, value, nil)
+		if err != nil {
+			t.Fatalf("Failed to put key-value: %v", err)
+		}
+	}
+
+	//it := NewIterator(k4)
+
+	expectedKeys := [][]byte{}
+
+	for i := 0; i < 510; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		expectedKeys = append(expectedKeys, key)
+
+	}
+
+	//i := 0
+
+	//for {
+	//	key, _ := it.Next()
+	//	if key == nil {
+	//		break
+	//	}
+	//
+	//	fmt.Println(string(key))
+
+	//if !bytes.Equal(key, expectedKeys[i]) {
+	//	t.Fatalf("Expected key %s, got %s", expectedKeys[i], key)
+	//
+	//}
+
+	//i++
+	//}
+}
+
 func TestCompaction2(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
