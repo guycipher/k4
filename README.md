@@ -118,6 +118,28 @@ func main() {
 }
 ```
 
+### Iteration
+To iterate over key-value pairs you can use an Iterator
+
+```go
+
+it := NewIterator(db)
+
+for  {
+    key, value := it.Next()
+    if key == nil {
+        break
+    }
+
+    // .. You can also go back if you want
+    key, value = it.Prev()
+    if key == nil {
+        break
+    }
+}
+
+```
+
 ### Transactions
 Transactions are atomic and can be used to group multiple PUT and DELETE operations together.  Transactions are committed atomically to K4.
 Transactions can be rolled back after their commited but before they are removed.
