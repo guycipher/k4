@@ -5,7 +5,7 @@ go build -o libk4.so -buildmode=c-shared k4.go
 ```
 
 Once run you should get
-``
+```
 libk4.so
 libk4.h
 ```
@@ -28,7 +28,7 @@ sudo ldconfig
 ```
 
 Verify install
-`
+```
 ldconfig -p | grep libk4
 ```
 
