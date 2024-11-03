@@ -263,7 +263,7 @@ func TestCheck4(t *testing.T) {
 	tt := time.Now()
 	bf := NewBloomFilter(100, 8)
 
-	keys := [][]byte{}
+	var keys [][]byte
 
 	for i := 0; i < 10000; i++ {
 		str, _ := fuzz.RandomString(10)

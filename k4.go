@@ -505,7 +505,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// then we will add the key value pairs to the sstable
 
 	// create a bloom filter
-	bf := bloomfilter.NewBloomFilter(1000, 8) // Will resize if needed automatically
+	bf := bloomfilter.NewBloomFilter(958058, 4) // Will resize if needed automatically
 
 	// add all the keys to the bloom filter
 	for it.Next() {
@@ -761,7 +761,7 @@ func (k4 *K4) compact() error {
 
 		// create a bloom filter
 
-		bf := bloomfilter.NewBloomFilter(1000, 8) // Will resize if needed automatically
+		bf := bloomfilter.NewBloomFilter(958058, 4) // Will resize if needed automatically
 
 		// create a new sstable
 		newSstable, err := k4.createSSTableNoLock()

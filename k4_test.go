@@ -150,9 +150,11 @@ func TestMemtableFlush(t *testing.T) {
 		}
 	}
 
-	time.Sleep(1 * time.Second)
-
-	k4.Close()
+	err = k4.Close()
+	if err != nil {
+		t.Fatalf("Failed to close K4: %v", err)
+		return
+	}
 
 	k4, err = Open(dir, 1024*1024, 2, false, false)
 	if err != nil {
