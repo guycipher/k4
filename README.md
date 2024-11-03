@@ -119,7 +119,8 @@ func main() {
 ```
 
 ### Iteration
-To iterate over key-value pairs you can use an Iterator
+To iterate over key-value pairs you can use an Iterator.
+Will iterate over key-value pairs in memtable then sstables.
 
 ```go
 
