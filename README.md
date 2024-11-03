@@ -49,25 +49,25 @@ More benchmarks coming comparing against other storage engines.
 K4 has a C library that can be used with FFIs (Foreign Function Interfaces) in other languages.  The C library is built using the Go toolchain and can be found in the c directory.
 
 #### FFIs
-- [ ] "[Python]()"
-- [ ] "[Ruby]()"
-- [ ] "[Lua]()"
-- [ ] "[Java]()"
-- [ ] "[Rust]()"
-- [ ] "[Haskell]()"
-- [ ] "[Perl]()"
-- [ ] "[C#]()"
-- [ ] "[Scala]()"
-- [ ] "[D]()"
-- [ ] "[Swift]()"
-- [ ] "[Kotlin]()"
-- [ ] "[Elixir]()"
-- [ ] "[OCaml]()"
-- [ ] "[PHP]()"
-- [ ] "[F#]()"
-- [ ] "[Ada]()"
-- [ ] "[R]()"
-- [ ] "[Node.JS]()"
+- [ ] [Python]()
+- [ ] [Ruby]()
+- [ ] [Lua]()
+- [ ] [Java]()
+- [ ] [Rust]()
+- [ ] [Haskell]()
+- [ ] [Perl]()
+- [ ] [C#]()
+- [ ] [Scala]()
+- [ ] [D]()
+- [ ] [Swift]()
+- [ ] [Kotlin]()
+- [ ] [Elixir]()
+- [ ] [OCaml]()
+- [ ] [PHP]()
+- [ ] [F#]()
+- [ ] [Ada]()
+- [ ] [R]()
+- [ ] [Node.JS]()
 
 
 ### Example usage
