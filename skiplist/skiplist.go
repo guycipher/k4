@@ -304,11 +304,21 @@ func (it *SkipListIterator) Prev() bool {
 		return false
 	}
 	prev := it.skipList.header
+	found := false
 	for i := it.skipList.level; i >= 0; i-- {
 		for prev.forward[i] != nil && prev.forward[i] != it.current {
 			prev = prev.forward[i]
 		}
+		if prev.forward[i] == it.current {
+			found = true
+		}
 	}
+
+	// If we are at the header or the current node is not found, there is no previous node
+	if prev == it.skipList.header || !found {
+		return false
+	}
+
 	it.current = prev
 	return true
 }

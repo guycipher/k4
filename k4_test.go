@@ -225,12 +225,11 @@ func TestCompaction(t *testing.T) {
 	}
 }
 
-// @todo
 func TestIterator(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 12196/4, 2, true, false)
+	k4, err := Open(dir, 12196/4, 3000, true, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -244,10 +243,7 @@ func TestIterator(t *testing.T) {
 			k4.Close()
 			t.Fatalf("Failed to put key-value: %v", err)
 		}
-
 	}
-
-	time.Sleep(8 * time.Second)
 
 	k4.Close()
 
@@ -268,32 +264,46 @@ func TestIterator(t *testing.T) {
 		}
 	}
 
-	//it := NewIterator(k4)
+	it := NewIterator(k4)
 
-	expectedKeys := [][]byte{}
+	expectedKeys := make(map[string]bool)
 
 	for i := 0; i < 510; i++ {
 		key := []byte("key" + fmt.Sprintf("%d", i))
-		expectedKeys = append(expectedKeys, key)
-
+		expectedKeys[string(key)] = true
 	}
 
-	//i := 0
+	// Iterate forward
+	for {
+		key, _ := it.Next()
+		if key == nil {
+			break
+		}
 
+		if !expectedKeys[string(key)] {
+			t.Fatalf("Unexpected key %s", key)
+		}
+		expectedKeys[string(key)] = false
+	}
+
+	// Now we go backwards and mark the keys we find true
 	//for {
-	//	key, _ := it.Next()
+	//	key, _ := it.Prev()
 	//	if key == nil {
 	//		break
 	//	}
 	//
-	//	fmt.Println(string(key))
-
-	//if !bytes.Equal(key, expectedKeys[i]) {
-	//	t.Fatalf("Expected key %s, got %s", expectedKeys[i], key)
-	//
+	//	if expectedKeys[string(key)] {
+	//		t.Fatalf("Unexpected key %s", key)
+	//	}
+	//	expectedKeys[string(key)] = true
 	//}
-
-	//i++
+	//
+	//// Verify all keys are true
+	//for k, v := range expectedKeys {
+	//	if !v {
+	//		t.Fatalf("Expected key not found %s", k)
+	//	}
 	//}
 }
 

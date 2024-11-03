@@ -706,6 +706,17 @@ func (it *SSTableIterator) currentKey() []byte {
 	return key
 }
 
+func (it *SSTableIterator) prev() bool {
+	// We check if the current page is less than 0
+	// if so we return false
+	if it.currentPage < 0 {
+		return false
+	}
+
+	it.currentPage-- // decrement the current page
+	return true
+}
+
 // newWALIterator creates a new WAL iterator
 func newWALIterator(pager *pager.Pager, compressed bool) *WALIterator {
 
@@ -1764,7 +1775,6 @@ func greaterThan(a, b []byte) bool {
 }
 
 // NewIterator creates a new Iterator
-// ROUGH**
 func NewIterator(instance *K4) *Iterator {
 	sstablesIter := make([]*SSTableIterator, len(instance.sstables))
 	for i, sstable := range instance.sstables {
@@ -1778,7 +1788,6 @@ func NewIterator(instance *K4) *Iterator {
 }
 
 // Next moves the iterator to the next key-value pair
-// ROUGH**
 func (it *Iterator) Next() ([]byte, []byte) {
 	// Check memtable
 	if it.memtableIter.Next() {
@@ -1786,12 +1795,29 @@ func (it *Iterator) Next() ([]byte, []byte) {
 	}
 
 	// Check SSTables
-	for it.iterIndex < len(it.sstablesIter) {
-		if it.sstablesIter[it.iterIndex].next() {
-			return it.sstablesIter[it.iterIndex].current()
-		} else {
-			it.iterIndex++
-		}
+
+	if it.sstablesIter[it.iterIndex].next() {
+		return it.sstablesIter[it.iterIndex].current()
+	} else {
+		it.iterIndex++
+	}
+
+	return nil, nil
+}
+
+// Prev moves the iterator to the previous key-value pair
+func (it *Iterator) Prev() ([]byte, []byte) {
+	// Check memtable
+	if it.memtableIter.Prev() {
+
+		return it.memtableIter.Current()
+	}
+
+	// Check SSTables
+	if it.sstablesIter[it.iterIndex].prev() {
+		return it.sstablesIter[it.iterIndex].current()
+	} else {
+		it.iterIndex--
 	}
 
 	return nil, nil
