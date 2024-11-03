@@ -37,101 +37,128 @@ import "C"
 import (
 	"github.com/guycipher/k4"
 	"time"
-	"unsafe"
 )
 
-//export Open
-func Open(directory *C.char, memtableFlushThreshold C.int, compactionInterval C.int, logging C.int, compress C.int) unsafe.Pointer {
+var (
+	globalDB   *k4.K4          // The global database instance
+	currentTxn *k4.Transaction // The current transaction
+	// What differs in the C library as you can have 1 global database instance and 1 current transaction at a time
+)
+
+const (
+	//export OPR_PUT is the operation code for setting a key-value pair
+	OPR_PUT = 0
+	//export OPR_DEL is the operation code for deleting a key-value pair
+	OPR_DEL = 1
+	// Above does not export the constants to C for some odd reason
+)
+
+//export db_open
+func db_open(directory *C.char, memtableFlushThreshold C.int, compactionInterval C.int, logging C.int, compress C.int) C.int {
 	db, err := k4.Open(C.GoString(directory), int(memtableFlushThreshold), int(compactionInterval), logging != 0, compress != 0)
 	if err != nil {
-		return nil
+		return -1
 	}
-	return unsafe.Pointer(db)
+
+	globalDB = db
+
+	return 0
 }
 
-//export Close
-func Close(db unsafe.Pointer) {
-	k4db := (*k4.K4)(db)
-	k4db.Close()
+//export db_close
+func db_close() C.int {
+	err := globalDB.Close()
+	if err != nil {
+		return -1
+	}
+
+	return 0
 }
 
-//export Put
-func Put(db unsafe.Pointer, key *C.char, value *C.char, ttl C.int64_t) C.int {
-	k4db := (*k4.K4)(db)
+//export db_put
+func db_put(key *C.char, value *C.char, ttl C.int64_t) C.int {
+
 	ttlDuration := time.Duration(ttl)
 
-	err := k4db.Put([]byte(C.GoString(key)), []byte(C.GoString(value)), &ttlDuration)
+	err := globalDB.Put([]byte(C.GoString(key)), []byte(C.GoString(value)), &ttlDuration)
 	if err != nil {
 		return -1
 	}
 	return 0
 }
 
-//export Get
-func Get(db unsafe.Pointer, key *C.char) *C.char {
-	k4db := (*k4.K4)(db)
-	value, err := k4db.Get([]byte(C.GoString(key)))
+//export db_get
+func db_get(key *C.char) *C.char {
+	value, err := globalDB.Get([]byte(C.GoString(key)))
 	if err != nil {
 		return nil
 	}
 	return C.CString(string(value))
 }
 
-//export Delete
-func Delete(db unsafe.Pointer, key *C.char) C.int {
-	k4db := (*k4.K4)(db)
-	err := k4db.Delete([]byte(C.GoString(key)))
+//export db_delete
+func db_delete(key *C.char) C.int {
+	err := globalDB.Delete([]byte(C.GoString(key)))
 	if err != nil {
 		return -1
 	}
 	return 0
 }
 
-//export BeginTransaction
-func BeginTransaction(db unsafe.Pointer) unsafe.Pointer {
-	k4db := (*k4.K4)(db)
-	return unsafe.Pointer(k4db.BeginTransaction())
+//export begin_transaction
+func begin_transaction() C.int {
+	currentTxn = globalDB.BeginTransaction()
+	return 0
 }
 
-//export AddOperation
-func AddOperation(txn unsafe.Pointer, op C.int, key *C.char, value *C.char) {
-	transaction := (*k4.Transaction)(txn)
-	transaction.AddOperation(k4.OPR_CODE(op), []byte(C.GoString(key)), []byte(C.GoString(value)))
+//export add_operation
+func add_operation(op C.int, key *C.char, value *C.char) C.int {
+	if currentTxn == nil {
+		return -1
+	}
+
+	currentTxn.AddOperation(k4.OPR_CODE(op), []byte(C.GoString(key)), []byte(C.GoString(value)))
+
+	return 0
 }
 
-//export RemoveTransaction
-func RemoveTransaction(txn unsafe.Pointer, db unsafe.Pointer) {
-	transaction := (*k4.Transaction)(txn)
-	k4db := (*k4.K4)(db)
-	transaction.Remove(k4db)
+//export remove_transaction
+func remove_transaction() C.int {
+
+	currentTxn.Remove(globalDB)
+
+	currentTxn = nil
+
+	return 0
 }
 
-//export RollbackTransaction
-func RollbackTransaction(txn unsafe.Pointer, db unsafe.Pointer) C.int {
-	transaction := (*k4.Transaction)(txn)
-	k4db := (*k4.K4)(db)
-	err := transaction.Rollback(k4db)
+//export rollback_transaction
+func rollback_transaction() C.int {
+
+	err := currentTxn.Rollback(globalDB)
 	if err != nil {
 		return -1
 	}
 	return 0
 }
 
-//export CommitTransaction
-func CommitTransaction(txn unsafe.Pointer, db unsafe.Pointer) C.int {
-	transaction := (*k4.Transaction)(txn)
-	k4db := (*k4.K4)(db)
-	err := transaction.Commit(k4db)
+//export commit_transaction
+func commit_transaction() C.int {
+
+	err := currentTxn.Commit(globalDB)
 	if err != nil {
 		return -1
 	}
 	return 0
 }
 
-//export RecoverFromWAL
-func RecoverFromWAL(db unsafe.Pointer) C.int {
-	k4db := (*k4.K4)(db)
-	err := k4db.RecoverFromWAL()
+//export recover_from_wal
+func recover_from_wal() C.int {
+	if globalDB == nil {
+		return -1
+	}
+
+	err := globalDB.RecoverFromWAL()
 	if err != nil {
 		return -1
 	}

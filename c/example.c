@@ -1,64 +1,65 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "k4.h"
+#include <libk4.h>
 
 int main() {
-    // Open the K4 database
-    K4* db = k4_open("data", 1024, 60, 1, 1);
-    if (db == NULL) {
-        fprintf(stderr, "Failed to open database\n");
-        return 1;
+    // Open a database
+    if (db_open("data", 1024, 60, 1, 0) != 0) {
+        printf("Failed to open database\n");
+        return -1;
     }
 
-    // Put a key-value pair into the database
-    if (k4_put(db, "key1", "value1", 3600) != 0) {
-        fprintf(stderr, "Failed to put key-value pair\n");
-        k4_close(db);
-        return 1;
+    // Put a key-value pair
+    if (db_put("key1", "value1", 3600) != 0) {
+        printf("Failed to put key-value pair\n");
+        db_close();
+        return -1;
     }
 
-    // Get the value for a key from the database
-    char* value = k4_get(db, "key1");
+    // Get the value for the key
+    char* value = db_get("key1");
     if (value == NULL) {
-        fprintf(stderr, "Failed to get value for key\n");
-        k4_close(db);
-        return 1;
+        printf("Failed to get value for key\n");
+        db_close();
+        return -1;
     }
     printf("Got value: %s\n", value);
     free(value);
 
-    // Delete a key-value pair from the database
-    if (k4_delete(db, "key1") != 0) {
-        fprintf(stderr, "Failed to delete key-value pair\n");
-        k4_close(db);
-        return 1;
+    // Delete the key-value pair
+    if (db_delete("key1") != 0) {
+        printf("Failed to delete key-value pair\n");
+        db_close();
+        return -1;
     }
 
     // Begin a transaction
-    Transaction* txn = k4_begin_transaction(db);
-    if (txn == NULL) {
-        fprintf(stderr, "Failed to begin transaction\n");
-        k4_close(db);
-        return 1;
+    if (begin_transaction() != 0) {
+        printf("Failed to begin transaction\n");
+        db_close();
+        return -1;
     }
 
-    // Add operations to the transaction
-    k4_add_operation(txn, PUT, "key2", "value2");
-    k4_add_operation(txn, DELETE, "key2", NULL);
+    // Add an operation to the transaction
+    if (add_operation(0, "key2", "value2") != 0) {
+        printf("Failed to add operation to transaction\n");
+        rollback_transaction();
+        db_close();
+        return -1;
+    }
 
     // Commit the transaction
-    if (k4_commit_transaction(txn, db) != 0) {
-        fprintf(stderr, "Failed to commit transaction\n");
-        k4_rollback_transaction(txn, db);
-        k4_close(db);
-        return 1;
+    if (commit_transaction() != 0) {
+        printf("Failed to commit transaction\n");
+        db_close();
+        return -1;
     }
 
-    // Remove the transaction
-    k4_remove_transaction(txn, db);
-
-    // Close the K4 database
-    k4_close(db);
+    // Close the database
+    if (db_close() != 0) {
+        printf("Failed to close database\n");
+        return -1;
+    }
 
     return 0;
 }
