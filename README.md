@@ -71,7 +71,7 @@ K4 has a C library that can be used with FFIs (Foreign Function Interfaces) in o
 
 
 ### Example usage
-This is GO code that demonstrates how to use K4.  The code is simple and demonstrates the basic operations of PUT, GET, and DELETE.
+This is GO code that demonstrates how to use K4.  The code is simple and demonstrates PUT, GET, and DELETE operations.
 
 ```go
 import (
