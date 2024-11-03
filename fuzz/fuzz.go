@@ -53,6 +53,20 @@ func RandomString(length int) (string, error) {
 	return string(b) + uniqueSuffix, nil
 }
 
+// RandomByteArr generates random byte arrays of a given length
+func RandomByteArr(length int) ([]byte, error) {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return nil, err
+		}
+		b[i] = charset[num.Int64()]
+	}
+	return b, nil
+}
+
 // GenerateKeyValuePairs generates a map of random key-value pairs
 func GenerateKeyValuePairs(numPairs int) map[string]interface{} {
 	pairs := make(map[string]interface{})

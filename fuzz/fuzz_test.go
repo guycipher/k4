@@ -48,6 +48,22 @@ func TestRandomStringUniqueness(t *testing.T) {
 	}
 }
 
+func TestRandomByteArrUniqueness(t *testing.T) {
+	const numGenerations = 1000000
+	const byteArrLength = 10
+
+	seen := make(map[string]struct{}, numGenerations)
+
+	for i := 0; i < numGenerations; i++ {
+		b, _ := RandomByteArr(byteArrLength)
+		s := string(b)
+		if _, exists := seen[s]; exists {
+			t.Fatalf("Duplicate byte array found: %s", s)
+		}
+		seen[s] = struct{}{}
+	}
+}
+
 func TestGenerateKeyValuePairs(t *testing.T) {
 	const numPairs = 1000000
 
