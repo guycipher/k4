@@ -42,6 +42,7 @@ import (
 var (
 	globalDB   *k4.K4          // The global database instance
 	currentTxn *k4.Transaction // The current transaction
+	iter       *k4.Iterator
 	// What differs in the C library as you can have 1 global database instance and 1 current transaction at a time
 )
 
@@ -171,6 +172,30 @@ func recover_from_wal() C.int {
 		return -1
 	}
 	return 0
+}
+
+//export new_iterator
+func new_iterator() C.int {
+	iter = k4.NewIterator(globalDB)
+	return 0
+}
+
+//export iter_next
+func iter_next() (key *C.char, value *C.char) {
+	k, v := iter.Next()
+	if k == nil {
+		return nil, nil
+	}
+	return C.CString(string(k)), C.CString(string(v))
+}
+
+//export iter_prev
+func iter_prev() (key *C.char, value *C.char) {
+	k, v := iter.Prev()
+	if k == nil {
+		return nil, nil
+	}
+	return C.CString(string(k)), C.CString(string(v))
 }
 
 func main() {}
