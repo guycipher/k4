@@ -1323,7 +1323,7 @@ func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error) {
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
 		k, value := it.Current()
-		if bytes.Compare(k, key) > 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+		if greaterThan(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
 				Value: value,
@@ -1344,7 +1344,7 @@ func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error) {
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
-			if bytes.Compare(k, key) > 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			if greaterThan(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 				if _, exists := result.binarySearch(k); !exists {
 					result.append(&KV{
 						Key:   k,
@@ -1373,7 +1373,7 @@ func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error) {
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
 		k, value := it.Current()
-		if bytes.Compare(k, key) >= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+		if (greaterThan(k, key) || bytes.Equal(k, key)) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
 				Value: value,
@@ -1394,7 +1394,7 @@ func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error) {
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
-			if bytes.Compare(k, key) >= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			if (greaterThan(k, key) || bytes.Equal(k, key)) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 				if _, exists := result.binarySearch(k); !exists {
 					result.append(&KV{
 						Key:   k,
@@ -1423,7 +1423,7 @@ func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error) {
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
 		k, value := it.Current()
-		if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+		if lessThan(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
 				Value: value,
@@ -1473,7 +1473,7 @@ func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error) {
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
 		k, value := it.Current()
-		if bytes.Compare(k, key) <= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+		if (lessThan(k, key) || bytes.Equal(k, key)) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
 				Value: value,
@@ -1494,7 +1494,7 @@ func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error) {
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
-			if bytes.Compare(k, key) <= 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			if (lessThan(k, key) || bytes.Equal(k, key)) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 				if _, exists := result.binarySearch(k); !exists {
 					result.append(&KV{
 						Key:   k,
@@ -1522,8 +1522,8 @@ func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
 		key, value := it.Current()
-		if bytes.Compare(key, startKey) >= 0 && bytes.Compare(key, endKey) <= 0 {
-			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+		if (greaterThan(key, startKey) || bytes.Equal(key, startKey)) && (lessThan(key, endKey) || bytes.Equal(key, endKey)) {
+			if !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 				result.append(&KV{
 					Key:   key,
 					Value: value,
@@ -1546,8 +1546,8 @@ func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			key, value := it.current()
-			if bytes.Compare(key, startKey) >= 0 && bytes.Compare(key, endKey) <= 0 {
-				if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			if (greaterThan(key, startKey) || bytes.Equal(key, startKey)) && (lessThan(key, endKey) || bytes.Equal(key, endKey)) {
+				if !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 					if _, exists := result.binarySearch(key); !exists {
 						result.append(&KV{
 							Key:   key,
@@ -1562,7 +1562,7 @@ func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
 	return result, nil
 }
 
-// NRange queries keys in a range from K4 and returns a map of key-value pairs
+// NRange returns key value pairs not in provided range
 func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
 	// Check if startKey or endKey is nil
 	if startKey == nil || endKey == nil {
@@ -1576,8 +1576,8 @@ func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
 		key, value := it.Current()
-		if bytes.Compare(key, startKey) < 0 || bytes.Compare(key, endKey) > 0 {
-			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+		if !(greaterThan(key, startKey) || bytes.Equal(key, startKey)) || !(lessThan(key, endKey) || bytes.Equal(key, endKey)) {
+			if !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 				result.append(&KV{
 					Key:   key,
 					Value: value,
@@ -1588,8 +1588,6 @@ func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
 	k4.memtableLock.RUnlock()
 
 	// Check SSTables
-	// We will check the sstables in reverse order
-	// We copy the sstables to avoid locking the sstables slice for the below looped reads
 	k4.sstablesLock.RLock()
 	sstablesCopy := make([]*SSTable, len(k4.sstables))
 	copy(sstablesCopy, k4.sstables)
@@ -1600,8 +1598,8 @@ func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			key, value := it.current()
-			if bytes.Compare(key, startKey) < 0 || bytes.Compare(key, endKey) > 0 {
-				if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			if !(greaterThan(key, startKey) || bytes.Equal(key, startKey)) || !(lessThan(key, endKey) || bytes.Equal(key, endKey)) {
+				if !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 					if _, exists := result.binarySearch(key); !exists {
 						result.append(&KV{
 							Key:   key,
@@ -1712,4 +1710,40 @@ func (k4 *K4) backgroundCompactor() {
 			}
 		}
 	}
+}
+
+// lessThan returns true if a is less than b.
+func lessThan(a, b []byte) bool {
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+
+	for i := 0; i < minLen; i++ {
+		if a[i] < b[i] {
+			return true
+		} else if a[i] > b[i] {
+			return false
+		}
+	}
+
+	return len(a) < len(b)
+}
+
+// greaterThan returns true if a is greater than b.
+func greaterThan(a, b []byte) bool {
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+
+	for i := 0; i < minLen; i++ {
+		if a[i] > b[i] {
+			return true
+		} else if a[i] < b[i] {
+			return false
+		}
+	}
+
+	return len(a) > len(b)
 }
