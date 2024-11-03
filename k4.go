@@ -598,7 +598,7 @@ func (k4 *K4) createSSTable() (*SSTable, error) {
 }
 
 // createSSTableNoLock creates an SSTable without locking ssTables slice
-// (used mainly for functions that lock the ssTables slice)
+// (used mainly for functions that lock the ssTables slice prior to calling this function)
 func (k4 *K4) createSSTableNoLock() (*SSTable, error) {
 
 	// Create SSTable file
@@ -766,7 +766,6 @@ func (k4 *K4) compact() error {
 		// then we will add the key value pairs to the sstable
 
 		// create a hashset
-
 		hs := hashset.NewHashSet()
 
 		// create a new sstable
