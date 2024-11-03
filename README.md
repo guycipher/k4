@@ -1,5 +1,5 @@
 <div>
-    <h1 align="left"><img width="128" src="graphics/k4-v2.png"></h1>
+    <h1 align="left"><img width="88" src="graphics/k4-v2.png"></h1>
 </div>
 
 K4 is an open-source, high-performance, transactional, and durable storage engine based on an LSM (Log-Structured Merge) tree architecture. This design optimizes high-speed writes, making it ideal for modern data-intensive applications.
