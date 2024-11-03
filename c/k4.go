@@ -78,6 +78,14 @@ func db_close() C.int {
 //export db_put
 func db_put(key *C.char, value *C.char, ttl C.int64_t) C.int {
 
+	if ttl == -1 {
+		err := globalDB.Put([]byte(C.GoString(key)), []byte(C.GoString(value)), nil)
+		if err != nil {
+			return -1
+		}
+		return 0
+	}
+
 	ttlDuration := time.Duration(ttl)
 
 	err := globalDB.Put([]byte(C.GoString(key)), []byte(C.GoString(value)), &ttlDuration)

@@ -10,7 +10,7 @@ int main() {
     }
 
     // Put a key-value pair
-    if (db_put("key1", "value1", 3600) != 0) {
+    if (db_put("key1", "value1", 1000000000 * 3000) != 0) { // 1000000000 * 3000 = 3000 seconds or -1 for no expiration
         printf("Failed to put key-value pair\n");
         db_close();
         return -1;

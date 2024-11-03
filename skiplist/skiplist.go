@@ -55,6 +55,12 @@ type SkipList struct {
 	p        float64 // Probability
 }
 
+// SkipListIterator represents an iterator for the skip list
+type SkipListIterator struct {
+	skipList *SkipList // Skip list
+	current  *Node     // Current node
+}
+
 // Iterator represents an iterator for the skip list
 type Iterator interface {
 	Next() bool                // Move to the next node
@@ -258,12 +264,6 @@ func (sl *SkipList) Search(key []byte) ([]byte, bool) {
 		return current.value, true
 	}
 	return nil, false
-}
-
-// SkipListIterator represents an iterator for the skip list
-type SkipListIterator struct {
-	skipList *SkipList // Skip list
-	current  *Node     // Current node
 }
 
 // NewIterator creates a new iterator for the skip list
