@@ -140,7 +140,7 @@ type KeyValueArray []*KV
 // logging - whether or not to log to the log file
 func Open(directory string, memtableFlushThreshold int, compactionInterval int, logging, compress bool, args ...interface{}) (*K4, error) {
 	// Create directory if it doesn't exist
-	err := os.MkdirAll(directory, 0755)
+	err := os.MkdirAll(directory, 0755) // MkdirAll does nothing if directory exists..
 	if err != nil {
 		return nil, err
 	}
@@ -429,8 +429,8 @@ func deserializeKv(data []byte) (key, value []byte, err error) {
 
 // loadSSTables loads SSTables from the directory
 func (k4 *K4) loadSSTables() {
-	// Open configured K4 directory
 
+	// Open configured K4 directory
 	dir, err := os.Open(k4.directory)
 	if err != nil {
 		k4.printLog(fmt.Sprintf("Failed to open directory: %v", err))
@@ -497,9 +497,9 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		return err
 	}
 
-	// Iterate over memtable and write to SSTable
-
+	// Create a new skiplist iterator
 	it := skiplist.NewIterator(memtable)
+
 	// first we will create a hashset which will be on initial pages of sstable
 	// we will add all the keys to the hashset
 	// then we will add the key value pairs to the sstable
@@ -510,6 +510,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// add all the keys to the hashset
 	for it.Next() {
 
+		// get the current key and value
 		key, val := it.Current()
 		if key == nil {
 			continue
@@ -520,7 +521,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 			continue // skip tombstones
 		}
 
-		hs.Add(key)
+		hs.Add(key) // add key to hash set
 	}
 
 	// serialize the hashset
@@ -529,23 +530,25 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		return err
 	}
 
-	// Write the hashset to the SSTable
+	// Write the hashset to the intitial pages of SSTable
 	_, err = sstable.pager.Write(hsData)
 	if err != nil {
 		return err
 	}
 
+	// We create another iterator to write the key value pairs to the sstable
 	it = skiplist.NewIterator(memtable)
+
 	for it.Next() {
 		key, value := it.Current()
 		if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
-			continue
+			continue // skip tombstones
 		}
 
 		// Check for compression
 		if k4.compress {
 
-			key, value, err = compressKeyValue(key, value)
+			key, value, err = compressKeyValue(key, value) // compress key and value
 			if err != nil {
 				return err
 			}
@@ -562,6 +565,8 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 
 	}
 
+	// We only lock sstables array when we are appending a new sstable
+	// this is because we don't want to block reads while we are flushing the memtable only when we are appending a new sstable
 	k4.sstablesLock.Lock() // lock the sstables
 	// Append SSTable to list of SSTables
 	k4.sstables = append(k4.sstables, sstable)
@@ -573,6 +578,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 }
 
 // createSSTable creates an SSTable
+// creates an sstable in directory, opens file and returns the sstable
 func (k4 *K4) createSSTable() (*SSTable, error) {
 	k4.sstablesLock.RLock()
 	defer k4.sstablesLock.RUnlock()
