@@ -34,8 +34,8 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"github.com/guycipher/k4/bloomfilter"
 	"github.com/guycipher/k4/compressor"
+	"github.com/guycipher/k4/hashset"
 	"github.com/guycipher/k4/pager"
 	"github.com/guycipher/k4/skiplist"
 	"log"
@@ -500,14 +500,14 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// Iterate over memtable and write to SSTable
 
 	it := skiplist.NewIterator(memtable)
-	// first we will create a bloom filter which will be on initial pages of sstable
-	// we will add all the keys to the bloom filter
+	// first we will create a hashset which will be on initial pages of sstable
+	// we will add all the keys to the hashset
 	// then we will add the key value pairs to the sstable
 
-	// create a bloom filter
-	bf := bloomfilter.NewBloomFilter(958058, 4) // Will resize if needed automatically
+	// create a hashset
+	hs := hashset.NewHashSet()
 
-	// add all the keys to the bloom filter
+	// add all the keys to the hashset
 	for it.Next() {
 
 		key, val := it.Current()
@@ -520,17 +520,17 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 			continue // skip tombstones
 		}
 
-		bf.Add(key)
+		hs.Add(key)
 	}
 
-	// serialize the bloom filter
-	bfData, err := bf.Serialize()
+	// serialize the hashset
+	hsData, err := hs.Serialize()
 	if err != nil {
 		return err
 	}
 
-	// Write the bloom filter to the SSTable
-	_, err = sstable.pager.Write(bfData)
+	// Write the hashset to the SSTable
+	_, err = sstable.pager.Write(hsData)
 	if err != nil {
 		return err
 	}
@@ -618,7 +618,7 @@ func sstableFilename(index int) string {
 func newSSTableIterator(pager *pager.Pager, compressed bool) *SSTableIterator {
 	return &SSTableIterator{
 		pager:       pager,                  // the pager for the sstable file
-		currentPage: 1,                      // skip the first page which is the bloom filter
+		currentPage: 0,                      // skip the first page which is the hashset
 		lastPage:    int(pager.Count() - 1), // the last page in the sstable
 		compressed:  compressed,             // whether the sstable is compressed
 	}
@@ -755,13 +755,13 @@ func (k4 *K4) compact() error {
 		// then we will remove the ith and (i+1)th sstable
 		// then we will add the new sstable to the list of sstables
 
-		// we will create a bloom filter which will be on initial pages of sstable
-		// we will add all the keys to the bloom filter
+		// we will create a hash set which will be on initial pages of sstable
+		// we will add all the keys to the hashset
 		// then we will add the key value pairs to the sstable
 
-		// create a bloom filter
+		// create a hashset
 
-		bf := bloomfilter.NewBloomFilter(958058, 4) // Will resize if needed automatically
+		hs := hashset.NewHashSet()
 
 		// create a new sstable
 		newSstable, err := k4.createSSTableNoLock()
@@ -773,27 +773,27 @@ func (k4 *K4) compact() error {
 		sstable1 := k4.sstables[i]
 		sstable2 := k4.sstables[i+1]
 
-		// add all the keys to the bloom filter
+		// add all the keys to the hash set
 		it := newSSTableIterator(sstable1.pager, k4.compress)
 		for it.next() {
 			key := it.currentKey()
-			bf.Add(key)
+			hs.Add(key)
 		}
 
 		it = newSSTableIterator(sstable2.pager, k4.compress)
 		for it.next() {
 			key := it.currentKey()
-			bf.Add(key)
+			hs.Add(key)
 		}
 
-		// serialize the bloom filter
-		bfData, err := bf.Serialize()
+		// serialize the hashset
+		hsData, err := hs.Serialize()
 		if err != nil {
 			return err
 		}
 
-		// Write the bloom filter to the SSTable
-		_, err = newSstable.pager.Write(bfData)
+		// Write the hashset to the SSTable
+		_, err = newSstable.pager.Write(hsData)
 		if err != nil {
 			return err
 		}
@@ -1191,28 +1191,28 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 func (sstable *SSTable) get(key []byte) ([]byte, error) {
 	// SStable pages are locked on read so no need to lock general sstable
 
-	// Read the bloom filter
-	bfData, err := sstable.pager.GetPage(0)
-	if err != nil {
-		return nil, err
-	}
+	// Read the hashset
+	//hsData, err := sstable.pager.GetPage(0)
+	//if err != nil {
+	//	return nil, err
+	//}
 
-	bf, err := bloomfilter.Deserialize(bfData)
-	if err != nil {
-		return nil, err
-	}
+	//hs, err := hashset.Deserialize(hsData)
+	//if err != nil {
+	//	return nil, err
+	//}
 
-	// Check if the key exists in the bloom filter
-	if !bf.Check(key) {
-		return nil, nil
-	}
+	// Check if the key exists in the hashset
+	//if !hs.Contains(key) {
+	//	return nil, nil
+	//}
 
 	// Iterate over SSTable
 	it := newSSTableIterator(sstable.pager, sstable.compressed)
 	for it.next() {
 		k, v := it.current()
 
-		if bytes.Compare(k, key) == 0 {
+		if bytes.Equal(k, key) {
 			return v, nil
 		}
 	}

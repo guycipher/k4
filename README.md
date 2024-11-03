@@ -38,12 +38,12 @@ More benchmarks coming comparing against other storage engines.
 - Configurable compaction interval (in seconds)
 - Configurable logging
 - Configurable skip list (max level and probability)
-- Bloom filter for faster lookups.  SSTable initial pages contain a bloom filter.  The system uses the bloom filter to determine if a key is in the SSTable before scanning the SSTable.
+- Optimized hashset for faster lookups.  SSTable initial pages contain a hashset.  The system uses the hashset to determine if a key is in the SSTable before scanning the SSTable.
 - Recovery from WAL
 - Granular page locking (sstables on scan are locked granularly)
 - Thread-safe (multiple readers, single writer)
 - TTL support (time to live).  Keys can be set to expire after a certain time duration.
-- Murmur3 inspired hashing on compression and bloom filter
+- Murmur3 inspired hashing on compression and hash set
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - Background flushing and compaction operations for less blocking on read and write operations
 - No dependencies

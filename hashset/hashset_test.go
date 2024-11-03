@@ -32,6 +32,8 @@ package hashset
 
 import (
 	"fmt"
+	"github.com/guycipher/k4/pager"
+	"os"
 	"testing"
 )
 
@@ -111,6 +113,7 @@ func TestHashSet_Clear(t *testing.T) {
 
 func TestHashSetAddCheckManyValues(t *testing.T) {
 	set := NewHashSet()
+
 	for i := 0; i < 10_000; i++ {
 		value := []byte("test" + fmt.Sprintf("%d", i))
 		set.Add(value)
@@ -132,8 +135,65 @@ func TestHashSet_SerializeDeserialize(t *testing.T) {
 		set.Add(value)
 	}
 
-	serialized := set.Serialize()
-	deserializedSet := Deserialize(serialized)
+	serialized, err := set.Serialize()
+	if err != nil {
+		t.Error(err)
+	}
+
+	deserializedSet, err := Deserialize(serialized)
+	if err != nil {
+		t.Error(err)
+	}
+
+	for _, value := range values {
+		if !deserializedSet.Contains(value) {
+			t.Errorf("Expected deserialized set to contain %v", value)
+		}
+	}
+
+	if deserializedSet.Size != set.Size {
+		t.Errorf("Expected deserialized set size to be %d, got %d", set.Size, deserializedSet.Size)
+	}
+}
+
+func TestHashSet_SerializeDeserialize_Pager(t *testing.T) {
+	defer os.Remove("hashset.test")
+
+	p, err := pager.OpenPager("hashset.test", os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+
+	set := NewHashSet()
+	values := [][]byte{
+		[]byte("test1"),
+		[]byte("test2"),
+		[]byte("test3"),
+	}
+
+	for _, value := range values {
+		set.Add(value)
+	}
+
+	serialized, err := set.Serialize()
+	if err != nil {
+		t.Error(err)
+	}
+
+	pgNum, err := p.Write(serialized)
+	if err != nil {
+		return
+	}
+
+	data, err := p.GetPage(pgNum)
+	if err != nil {
+		return
+	}
+
+	deserializedSet, err := Deserialize(data)
+	if err != nil {
+		t.Error(err)
+	}
 
 	for _, value := range values {
 		if !deserializedSet.Contains(value) {

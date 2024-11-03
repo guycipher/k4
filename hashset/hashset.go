@@ -125,26 +125,26 @@ func (h *HashSet) Clear() {
 }
 
 // Serialize encodes the HashSet into a byte slice.
-func (h *HashSet) Serialize() []byte {
+func (h *HashSet) Serialize() ([]byte, error) {
 	// We just use gob to encode the HashSet
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(h)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 // Deserialize decodes the byte slice into a HashSet.
-func Deserialize(data []byte) *HashSet {
+func Deserialize(data []byte) (*HashSet, error) {
 	// We just use gob to decode the byte slice
 	var h HashSet
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
 	err := dec.Decode(&h)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return &h
+	return &h, nil
 }
