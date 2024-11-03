@@ -174,6 +174,149 @@ func recover_from_wal() C.int {
 	return 0
 }
 
+//export greater_than
+func greater_than(key *C.char) ([]*C.char, []*C.char) {
+	keysValuePairs, err := globalDB.GreaterThan([]byte(C.GoString(key)))
+	if err != nil {
+		return nil, nil
+
+	}
+
+	var cKeys []*C.char
+	var cValues []*C.char
+
+	for _, kv := range *keysValuePairs {
+		cKeys = append(cKeys, C.CString(string(kv.Key)))
+		cValues = append(cValues, C.CString(string(kv.Value)))
+
+	}
+
+	return cKeys, cValues
+}
+
+//export less_than
+func less_than(key *C.char) ([]*C.char, []*C.char) {
+	keysValuePairs, err := globalDB.LessThan([]byte(C.GoString(key)))
+	if err != nil {
+		return nil, nil
+
+	}
+
+	var cKeys []*C.char
+	var cValues []*C.char
+
+	for _, kv := range *keysValuePairs {
+		cKeys = append(cKeys, C.CString(string(kv.Key)))
+		cValues = append(cValues, C.CString(string(kv.Value)))
+
+	}
+
+	return cKeys, cValues
+}
+
+//export nget
+func nget(key *C.char) ([]*C.char, []*C.char) {
+	keysValuePairs, err := globalDB.NGet([]byte(C.GoString(key)))
+	if err != nil {
+		return nil, nil
+
+	}
+
+	var cKeys []*C.char
+	var cValues []*C.char
+
+	for _, kv := range *keysValuePairs {
+		cKeys = append(cKeys, C.CString(string(kv.Key)))
+		cValues = append(cValues, C.CString(string(kv.Value)))
+
+	}
+
+	return cKeys, cValues
+
+}
+
+//export greater_than_eq
+func greater_than_eq(key *C.char) ([]*C.char, []*C.char) {
+	keysValuePairs, err := globalDB.GreaterThanEq([]byte(C.GoString(key)))
+	if err != nil {
+		return nil, nil
+
+	}
+
+	var cKeys []*C.char
+	var cValues []*C.char
+
+	for _, kv := range *keysValuePairs {
+		cKeys = append(cKeys, C.CString(string(kv.Key)))
+		cValues = append(cValues, C.CString(string(kv.Value)))
+
+	}
+
+	return cKeys, cValues
+}
+
+// less_than_eq
+func less_than_eq(key *C.char) ([]*C.char, []*C.char) {
+	keysValuePairs, err := globalDB.LessThanEq([]byte(C.GoString(key)))
+	if err != nil {
+		return nil, nil
+
+	}
+
+	var cKeys []*C.char
+	var cValues []*C.char
+
+	for _, kv := range *keysValuePairs {
+		cKeys = append(cKeys, C.CString(string(kv.Key)))
+		cValues = append(cValues, C.CString(string(kv.Value)))
+
+	}
+
+	return cKeys, cValues
+}
+
+//export range_
+func range_(start *C.char, end *C.char) ([]*C.char, []*C.char) {
+	keysValuePairs, err := globalDB.Range([]byte(C.GoString(start)), []byte(C.GoString(end)))
+	if err != nil {
+		return nil, nil
+
+	}
+
+	var cKeys []*C.char
+	var cValues []*C.char
+
+	for _, kv := range *keysValuePairs {
+		cKeys = append(cKeys, C.CString(string(kv.Key)))
+		cValues = append(cValues, C.CString(string(kv.Value)))
+
+	}
+
+	return cKeys, cValues
+
+}
+
+//export nrange
+func nrange(start *C.char, end *C.char) ([]*C.char, []*C.char) {
+	keysValuePairs, err := globalDB.NRange([]byte(C.GoString(start)), []byte(C.GoString(end)))
+	if err != nil {
+		return nil, nil
+
+	}
+
+	var cKeys []*C.char
+	var cValues []*C.char
+
+	for _, kv := range *keysValuePairs {
+		cKeys = append(cKeys, C.CString(string(kv.Key)))
+		cValues = append(cValues, C.CString(string(kv.Value)))
+
+	}
+
+	return cKeys, cValues
+
+}
+
 //export new_iterator
 func new_iterator() C.int {
 	iter = k4.NewIterator(globalDB)
