@@ -24,3 +24,6 @@ go.work.sum
 # env file
 .env
 .idea
+
+# server example data
+server_example/data
