@@ -4,8 +4,6 @@
 
 K4 is an open-source, high-performance, transactional, and durable storage engine based on an LSM (Log-Structured Merge) tree architecture. This design optimizes high-speed writes, making it ideal for modern data-intensive applications.
 
-Currently available as a library for Go, K4 plans to offer bindings and foreign function interfaces (FFIs) for other languages in the future.
-
 ### Benchmarks
 ```
 goos: linux
@@ -23,7 +21,6 @@ Both engines were used with default settings and similar configurations.
 ```
 
 More benchmarks coming comparing against other storage engines.
-
 
 ### Features
 - High speed writes.  Reads are also fast but writes are the primary focus.
@@ -48,8 +45,34 @@ More benchmarks coming comparing against other storage engines.
 - Background flushing and compaction operations for less blocking on read and write operations
 - No dependencies
 
+### C Library and FFIs
+K4 has a C library that can be used with FFIs (Foreign Function Interfaces) in other languages.  The C library is built using the Go toolchain and can be found in the c directory.
+
+#### FFIs
+- [ ] "[Python]()"
+- [ ] "[Ruby]()"
+- [ ] "[Lua]()"
+- [ ] "[Java]()"
+- [ ] "[Rust]()"
+- [ ] "[Haskell]()"
+- [ ] "[Perl]()"
+- [ ] "[C#]()"
+- [ ] "[Scala]()"
+- [ ] "[D]()"
+- [ ] "[Swift]()"
+- [ ] "[Kotlin]()"
+- [ ] "[Elixir]()"
+- [ ] "[OCaml]()"
+- [ ] "[PHP]()"
+- [ ] "[F#]()"
+- [ ] "[Ada]()"
+- [ ] "[R]()"
+- [ ] "[Node.JS]()"
+
 
 ### Example usage
+This is GO code that demonstrates how to use K4.  The code is simple and demonstrates the basic operations of PUT, GET, and DELETE.
+
 ```go
 import (
     "github.com/guycipher/k4"
