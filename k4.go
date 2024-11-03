@@ -516,7 +516,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		}
 
 		// Check if tombstone
-		if bytes.Compare(val, []byte(TOMBSTONE_VALUE)) == 0 {
+		if bytes.Equal(val, []byte(TOMBSTONE_VALUE)) {
 			continue // skip tombstones
 		}
 
@@ -538,7 +538,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	it = skiplist.NewIterator(memtable)
 	for it.Next() {
 		key, value := it.Current()
-		if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 {
+		if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			continue
 		}
 
@@ -1149,7 +1149,7 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 	value, found := k4.memtable.Search(key)
 	if found {
 		// Check if the value is a tombstone
-		if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 {
+		if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			return nil, nil
 		}
 
@@ -1176,7 +1176,7 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 			return nil, err
 		}
 		if value != nil {
-			if bytes.Compare(value, []byte(TOMBSTONE_VALUE)) == 0 { // Check if the value is a tombstone
+			if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) { // Check if the value is a tombstone
 				return nil, nil
 			}
 
@@ -1192,20 +1192,20 @@ func (sstable *SSTable) get(key []byte) ([]byte, error) {
 	// SStable pages are locked on read so no need to lock general sstable
 
 	// Read the hashset
-	//hsData, err := sstable.pager.GetPage(0)
-	//if err != nil {
-	//	return nil, err
-	//}
+	hsData, err := sstable.pager.GetPage(0)
+	if err != nil {
+		return nil, err
+	}
 
-	//hs, err := hashset.Deserialize(hsData)
-	//if err != nil {
-	//	return nil, err
-	//}
+	hs, err := hashset.Deserialize(hsData)
+	if err != nil {
+		return nil, err
+	}
 
-	// Check if the key exists in the hashset
-	//if !hs.Contains(key) {
-	//	return nil, nil
-	//}
+	//Check if the key exists in the hashset
+	if !hs.Contains(key) {
+		return nil, nil
+	}
 
 	// Iterate over SSTable
 	it := newSSTableIterator(sstable.pager, sstable.compressed)
@@ -1273,7 +1273,7 @@ func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
 		k, value := it.Current()
-		if !bytes.Equal(k, key) && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+		if !bytes.Equal(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
 				Value: value,
@@ -1294,7 +1294,7 @@ func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
 			k, value := it.current()
-			if !bytes.Equal(k, key) && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+			if !bytes.Equal(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 				if _, exists := result.binarySearch(key); !exists {
 					result.append(&KV{
 						Key:   k,
@@ -1643,7 +1643,7 @@ func (kva KeyValueArray) binarySearch(key []byte) (*KV, bool) {
 // is a function that runs in the background.  When there is a memtable in the flush queue
 // we pop it and flush it to a new SSTable
 func (k4 *K4) backgroundFlusher() {
-	defer k4.wg.Done()
+	defer k4.wg.Done() // We defer the wait group done to signal the wait group that we are done, so on return the done signal is sent
 
 	for {
 		select {
