@@ -19,7 +19,7 @@ RocksDB vs K4
 +=+=+=+=+=+=+=+
 Both engines were used with default settings and similar configurations.
 **RocksDB v7.8.3**      1 million writes sequential key-value pairs default settings = 2.9s-3.1s
-**K4      v1.0.0**      1 million writes sequential key-value pairs default settings = 1.7s-1.9s
+**K4      v1.9.0**      1 million writes sequential key-value pairs default settings = 174.67ms-190.00ms
 ```
 
 More benchmarks coming comparing against other storage engines.
