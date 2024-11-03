@@ -69,6 +69,7 @@ struct greater_than_return greater_than(char* key);
 struct less_than_return less_than(char* key);
 struct nget_return nget(char* key);
 struct greater_than_eq_return greater_than_eq(char* key);
+struct less_than_eq_return less_than_eq(char* key);
 struct range__return range_(char* start, char* end);
 struct nrange_return nrange(char* start, char* end);
 ```
