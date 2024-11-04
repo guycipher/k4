@@ -135,11 +135,11 @@ type KeyValueArray []*KV
 // Iterator is a structure for an iterator which goes through
 // memtable and sstables.  First it goes through the memtable, then once exhausted goes through the sstables
 type Iterator struct {
-	memtableIter *skiplist.SkipListIterator
-	sstablesIter []*SSTableIterator
-	currentKey   []byte
-	currentValue []byte
-	iterIndex    int
+	memtableIter *skiplist.SkipListIterator // memtable iterator
+	sstablesIter []*SSTableIterator         // an iterator for each sstable
+	currentKey   []byte                     // the current key
+	currentValue []byte                     // the current value
+	sstIterIndex int                        // the current sstable iterator index
 }
 
 // Open opens a new K4 instance at the specified directory.
@@ -1783,7 +1783,7 @@ func NewIterator(instance *K4) *Iterator {
 	return &Iterator{
 		memtableIter: skiplist.NewIterator(instance.memtable),
 		sstablesIter: sstablesIter,
-		iterIndex:    0,
+		sstIterIndex: 0,
 	}
 }
 
@@ -1796,10 +1796,10 @@ func (it *Iterator) Next() ([]byte, []byte) {
 
 	// Check SSTables
 
-	if it.sstablesIter[it.iterIndex].next() {
-		return it.sstablesIter[it.iterIndex].current()
+	if it.sstablesIter[it.sstIterIndex].next() {
+		return it.sstablesIter[it.sstIterIndex].current()
 	} else {
-		it.iterIndex++
+		it.sstIterIndex++
 	}
 
 	return nil, nil
@@ -1814,10 +1814,10 @@ func (it *Iterator) Prev() ([]byte, []byte) {
 	}
 
 	// Check SSTables
-	if it.sstablesIter[it.iterIndex].prev() {
-		return it.sstablesIter[it.iterIndex].current()
+	if it.sstablesIter[it.sstIterIndex].prev() {
+		return it.sstablesIter[it.sstIterIndex].current()
 	} else {
-		it.iterIndex--
+		it.sstIterIndex--
 	}
 
 	return nil, nil
