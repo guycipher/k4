@@ -5,7 +5,7 @@
 
 int main() {
     // Open database
-    void* db = db_open("testdb", 1024, 60, 1, 1);
+    void* db = db_open("data", 1024, 60, 1, 1);
     if (db == NULL) {
         printf("Failed to open database\n");
         return 1;
