@@ -1801,7 +1801,7 @@ func (it *Iterator) Next() ([]byte, []byte) {
 	if it.sstablesIter[it.sstIterIndex].next() {
 		return it.sstablesIter[it.sstIterIndex].current()
 	} else {
-		it.sstIterIndex++
+		it.sstIterIndex--
 	}
 
 	return nil, nil
@@ -1819,7 +1819,7 @@ func (it *Iterator) Prev() ([]byte, []byte) {
 	if it.sstablesIter[it.sstIterIndex].prev() {
 		return it.sstablesIter[it.sstIterIndex].current()
 	} else {
-		it.sstIterIndex--
+		it.sstIterIndex++
 	}
 
 	return nil, nil
