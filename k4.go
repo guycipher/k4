@@ -45,12 +45,12 @@ import (
 	"time"
 )
 
-const SSTABLE_EXTENSION = ".sst"                  // The SSTable file extension
-const LOG_EXTENSION = ".log"                      // The log file extension
-const WAL_EXTENSION = ".wal"                      // The write ahead log file extension
-const TOMBSTONE_VALUE = "$tombstone"              // The tombstone value
-const COMPRESSION_WINDOW_SIZE = 1024 * 32         // The compression window size
-const BACKGROUND_OP_SLEEP = 28 * time.Millisecond // The background sleep time for the background operations
+const SSTABLE_EXTENSION = ".sst"                 // The SSTable file extension
+const LOG_EXTENSION = ".log"                     // The log file extension
+const WAL_EXTENSION = ".wal"                     // The write ahead log file extension
+const TOMBSTONE_VALUE = "$tombstone"             // The tombstone value
+const COMPRESSION_WINDOW_SIZE = 1024 * 32        // The compression window size
+const BACKGROUND_OP_SLEEP = 5 * time.Microsecond // The background sleep time for the background operations
 
 // K4 is the main structure for the k4 database
 type K4 struct {
