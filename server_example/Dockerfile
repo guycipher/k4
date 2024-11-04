@@ -1,5 +1,5 @@
 # use version that k4 is using
-FROM golang:1.23.0-alpine
+FROM golang:1.23.2-alpine
 
 # set the working directory
 WORKDIR /app
