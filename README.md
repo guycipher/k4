@@ -43,6 +43,8 @@ More benchmarks coming comparing against other storage engines.
 - Murmur3 inspired hashing on compression and hash set
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - Background flushing and compaction operations for less blocking on read and write operations
+- Easy intuitive API(Get, Put, Delete, Range, NRange, GreaterThan, GreaterThanEq, LessThan, LessThanEq, NGet)
+- Iterator for iterating over key-value pairs in memtable and sstables with Next and Prev methods
 - No dependencies
 
 ### C Library and FFIs
