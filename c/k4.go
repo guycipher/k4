@@ -35,7 +35,7 @@ package main
 */
 import "C"
 import (
-	"github.com/guycipher/k4/v2"
+	"github.com/guycipher/k4"
 	"time"
 	"unsafe"
 )
