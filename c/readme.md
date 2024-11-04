@@ -79,4 +79,5 @@ struct nrange_return nrange(char* start, char* end);
 int new_iterator();
 struct iter_next_return iter_next();
 struct iter_prev_return iter_prev();
+void iter_reset();
 ```

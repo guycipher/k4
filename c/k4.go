@@ -41,8 +41,8 @@ import (
 
 var (
 	globalDB   *k4.K4          // The global database instance
-	currentTxn *k4.Transaction // The current transaction
-	iter       *k4.Iterator
+	currentTxn *k4.Transaction // The current transaction, can be nil
+	iter       *k4.Iterator    // The current iterator, can be nil
 	// What differs in the C library as you can have 1 global database instance and 1 current transaction at a time
 )
 
@@ -339,6 +339,11 @@ func iter_prev() (key *C.char, value *C.char) {
 		return nil, nil
 	}
 	return C.CString(string(k)), C.CString(string(v))
+}
+
+//export iter_reset
+func iter_reset() {
+	iter.Reset()
 }
 
 func main() {}
