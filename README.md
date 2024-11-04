@@ -29,7 +29,7 @@ More benchmarks coming comparing against other storage engines.
 - Variable length binary keys and values.  Keys and their values can be any length
 - Write-Ahead Logging (WAL).  System writes PUT and DELETE operations to a log file before applying them to K4.
 - Atomic transactions.  Multiple PUT and DELETE operations can be grouped together and applied atomically to K4.
-- Paired compaction.  SSTables are paired up during compaction and merged into a single SSTable(s).  This reduces the number of SSTables and minimizes disk I/O for read operations.
+- Multi-threaded parallel paired compaction.  SSTables are paired up during compaction and merged into a single SSTable(s).  This reduces the number of SSTables and minimizes disk I/O for read operations.
 - Memtable implemented as a skip list.
 - Configurable memtable flush threshold
 - Configurable compaction interval (in seconds)
