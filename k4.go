@@ -159,6 +159,9 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 		return nil, err
 	}
 
+	// Register *time.Time with gob
+	gob.Register(&time.Time{})
+
 	// Initialize K4
 	k4 := &K4{
 		memtableLock:           &sync.RWMutex{},
