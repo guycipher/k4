@@ -27,6 +27,7 @@ go.work.sum
 
 # server example data
 server_example/data
+c/data
 c/libk4.h.gch
 c/libk4.h
 c/libk4.so
