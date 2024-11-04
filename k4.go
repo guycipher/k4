@@ -1779,10 +1779,18 @@ func greaterThan(a, b []byte) bool {
 func NewIterator(instance *K4) *Iterator {
 	instance.sstablesLock.RLock() // Lock the sstables as we are gonna check how many sstables we have
 	defer instance.sstablesLock.RUnlock()
-	sstablesIter := make([]*SSTableIterator, len(instance.sstables))
+
+	if len(instance.sstables) == 0 { // If we have no sstables we return nil
+		return nil
+	}
+
+	sstablesIter := make([]*SSTableIterator, len(instance.sstables)) // We create an array of sstable iterators
+
+	// We create an iterator for each sstable
 	for i, sstable := range instance.sstables {
 		sstablesIter[i] = newSSTableIterator(sstable.pager, sstable.compressed)
 	}
+
 	return &Iterator{
 		memtableIter: skiplist.NewIterator(instance.memtable),
 		sstablesIter: sstablesIter,
@@ -1798,9 +1806,8 @@ func (it *Iterator) Next() ([]byte, []byte) {
 	}
 
 	// Check SSTables
-
-	if it.sstablesIter[it.sstIterIndex].next() {
-		return it.sstablesIter[it.sstIterIndex].current()
+	if it.sstablesIter[it.sstIterIndex].next() { // if we have a next key-value pair in the current sstable
+		return it.sstablesIter[it.sstIterIndex].current() // return the key-value pair
 	} else {
 		it.sstIterIndex--        // go to the next sstable
 		if it.sstIterIndex < 0 { // if we have no more sstables to check
@@ -1814,14 +1821,14 @@ func (it *Iterator) Next() ([]byte, []byte) {
 // Prev moves the iterator to the previous key-value pair
 func (it *Iterator) Prev() ([]byte, []byte) {
 	// Check memtable
-	if it.memtableIter.Prev() {
+	if it.memtableIter.Prev() { // if we have a previous key-value pair in the memtable
 
-		return it.memtableIter.Current()
+		return it.memtableIter.Current() // return the key-value pair
 	}
 
 	// Check SSTables
-	if it.sstablesIter[it.sstIterIndex].prev() {
-		return it.sstablesIter[it.sstIterIndex].current()
+	if it.sstablesIter[it.sstIterIndex].prev() { // if we have a previous key-value pair in the current sstable
+		return it.sstablesIter[it.sstIterIndex].current() // return the key-value pair
 	} else {
 		it.sstIterIndex++                            // go to the next sstable
 		if it.sstIterIndex >= len(it.sstablesIter) { // if we have no more sstables to check

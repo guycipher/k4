@@ -245,6 +245,8 @@ func TestIterator(t *testing.T) {
 		}
 	}
 
+	// Above will create 5 sstables based on configuration
+
 	k4.Close()
 
 	k4, err = Open(dir, 1024*1024, 2, false, false)
