@@ -299,28 +299,23 @@ func (it *SkipListIterator) Next() bool {
 
 // Prev moves the iterator to the previous node
 func (it *SkipListIterator) Prev() bool {
-	// To move backward, we need to traverse from the header to the current node
-	if it.current == it.skipList.header {
-		return false
-	}
-	prev := it.skipList.header
-	found := false
+	current := it.skipList.header
 	for i := it.skipList.level; i >= 0; i-- {
-		for prev.forward[i] != nil && prev.forward[i] != it.current {
-			prev = prev.forward[i]
-		}
-		if prev.forward[i] == it.current {
-			found = true
+		for current.forward[i] != nil && (string(current.forward[i].key) < string(it.current.key) || bytes.Equal(current.forward[i].value, []byte(TOMBSTONE_VALUE))) {
+			if current.forward[i].IsExpired() || bytes.Equal(current.forward[i].value, []byte(TOMBSTONE_VALUE)) {
+				// Skip nodes with tombstone values
+				current = current.forward[i]
+			} else {
+				current = current.forward[i]
+			}
 		}
 	}
-
-	// If we are at the header or the current node is not found, there is no previous node
-	if prev == it.skipList.header || !found {
-		return false
+	if current != it.skipList.header {
+		it.current = current
+		return true
 	}
+	return false
 
-	it.current = prev
-	return true
 }
 
 // HasNext checks if there is a next node

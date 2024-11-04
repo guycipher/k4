@@ -249,7 +249,7 @@ func TestIterator(t *testing.T) {
 
 	k4.Close()
 
-	k4, err = Open(dir, 1024*1024, 2, false, false)
+	k4, err = Open(dir, (1024*1024)*5, 3000, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen K4: %v", err)
 	}
@@ -282,9 +282,11 @@ func TestIterator(t *testing.T) {
 			break
 		}
 
-		if !expectedKeys[string(key)] {
+		// Check if key is expected
+		if _, ok := expectedKeys[string(key)]; !ok {
 			t.Fatalf("Unexpected key %s", key)
 		}
+
 		expectedKeys[string(key)] = false
 	}
 
@@ -308,12 +310,14 @@ func TestIterator(t *testing.T) {
 		expectedKeys[string(key)] = true
 	}
 
-	// Verify all keys are true after backward iteration
+	// all expected keys should be true
 	for k, v := range expectedKeys {
 		if !v {
 			t.Fatalf("Key %s was not iterated over in backward direction", k)
 		}
+
 	}
+
 }
 
 func TestCompaction2(t *testing.T) {

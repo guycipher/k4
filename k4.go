@@ -135,11 +135,13 @@ type KeyValueArray []*KV
 // Iterator is a structure for an iterator which goes through
 // memtable and sstables.  First it goes through the memtable, then once exhausted goes through the sstables
 type Iterator struct {
+	instance     *K4                        // the instance of K4
 	memtableIter *skiplist.SkipListIterator // memtable iterator
 	sstablesIter []*SSTableIterator         // an iterator for each sstable
 	currentKey   []byte                     // the current key
 	currentValue []byte                     // the current value
 	sstIterIndex int                        // the current sstable iterator index
+	prevStarted  bool                       // whether the previous function was called
 }
 
 // Open opens a new K4 instance at the specified directory.
@@ -1792,6 +1794,7 @@ func NewIterator(instance *K4) *Iterator {
 	}
 
 	return &Iterator{
+		instance:     instance,
 		memtableIter: skiplist.NewIterator(instance.memtable),
 		sstablesIter: sstablesIter,
 		sstIterIndex: len(instance.sstables) - 1, // we should start at the latest sstable
@@ -1805,36 +1808,69 @@ func (it *Iterator) Next() ([]byte, []byte) {
 		return it.memtableIter.Current()
 	}
 
-	// Check SSTables
-	if it.sstablesIter[it.sstIterIndex].next() { // if we have a next key-value pair in the current sstable
-		return it.sstablesIter[it.sstIterIndex].current() // return the key-value pair
-	} else {
-		it.sstIterIndex--        // go to the next sstable
-		if it.sstIterIndex < 0 { // if we have no more sstables to check
-			return nil, nil
+	// Iterate through SSTables
+	for it.sstIterIndex >= 0 {
+		if it.sstablesIter[it.sstIterIndex].next() {
+			key, value := it.sstablesIter[it.sstIterIndex].current()
+			if key != nil {
+				return key, value
+			}
+		} else {
+			it.sstIterIndex--
 		}
 	}
 
+	// If no more sstables to check, return nil
 	return nil, nil
 }
 
 // Prev moves the iterator to the previous key-value pair
 func (it *Iterator) Prev() ([]byte, []byte) {
-	// Check memtable
-	if it.memtableIter.Prev() { // if we have a previous key-value pair in the memtable
-
-		return it.memtableIter.Current() // return the key-value pair
-	}
-
-	// Check SSTables
-	if it.sstablesIter[it.sstIterIndex].prev() { // if we have a previous key-value pair in the current sstable
-		return it.sstablesIter[it.sstIterIndex].current() // return the key-value pair
-	} else {
-		it.sstIterIndex++                            // go to the next sstable
-		if it.sstIterIndex >= len(it.sstablesIter) { // if we have no more sstables to check
-			return nil, nil
+	if !it.prevStarted {
+		if k, v := it.memtableIter.Current(); k != nil {
+			it.prevStarted = true // We set the prevStarted to true to indicate we have started the prev iteration
+			// We do this to get the last element in the memtable
+			return k, v
 		}
 	}
 
+	// Check memtable
+	if it.memtableIter.Prev() {
+		return it.memtableIter.Current()
+	}
+
+	if it.sstIterIndex == -1 {
+		// set to 0
+		it.sstIterIndex = 0
+	}
+
+	// Iterate through SSTables
+	for it.sstIterIndex < len(it.sstablesIter) {
+
+		if it.sstablesIter[it.sstIterIndex].prev() {
+			key, value := it.sstablesIter[it.sstIterIndex].current()
+			if key != nil {
+				return key, value
+			}
+		} else {
+			it.sstIterIndex++
+
+		}
+	}
+
+	// If no more sstables to check, return nil
 	return nil, nil
+}
+
+// Reset resets the iterator
+func (it *Iterator) Reset() {
+	it.memtableIter = skiplist.NewIterator(it.instance.memtable)
+	it.sstIterIndex = len(it.instance.sstables) - 1
+
+	for i := 0; i < len(it.sstablesIter); i++ {
+		it.sstablesIter[i] = newSSTableIterator(it.instance.sstables[i].pager, it.instance.sstables[i].compressed)
+	}
+
+	it.prevStarted = false
+
 }
