@@ -706,6 +706,7 @@ func (it *SSTableIterator) currentKey() []byte {
 	return key
 }
 
+// prev returns true if there is a previous key-value pair in the SSTable
 func (it *SSTableIterator) prev() bool {
 	// We check if the current page is less than 0
 	// if so we return false

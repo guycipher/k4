@@ -287,24 +287,24 @@ func TestIterator(t *testing.T) {
 	}
 
 	// Now we go backwards and mark the keys we find true
-	//for {
-	//	key, _ := it.Prev()
-	//	if key == nil {
-	//		break
-	//	}
-	//
-	//	if expectedKeys[string(key)] {
-	//		t.Fatalf("Unexpected key %s", key)
-	//	}
-	//	expectedKeys[string(key)] = true
-	//}
-	//
-	//// Verify all keys are true
-	//for k, v := range expectedKeys {
-	//	if !v {
-	//		t.Fatalf("Expected key not found %s", k)
-	//	}
-	//}
+	for {
+		key, _ := it.Prev()
+		if key == nil {
+			break
+		}
+
+		if expectedKeys[string(key)] {
+			t.Fatalf("Unexpected key %s", key)
+		}
+		expectedKeys[string(key)] = true
+	}
+
+	// Verify all keys are true
+	for k, v := range expectedKeys {
+		if !v {
+			t.Fatalf("Expected key not found %s", k)
+		}
+	}
 }
 
 func TestCompaction2(t *testing.T) {
