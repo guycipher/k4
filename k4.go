@@ -45,11 +45,12 @@ import (
 	"time"
 )
 
-const SSTABLE_EXTENSION = ".sst"          // The SSTable file extension
-const LOG_EXTENSION = ".log"              // The log file extension
-const WAL_EXTENSION = ".wal"              // The write ahead log file extension
-const TOMBSTONE_VALUE = "$tombstone"      // The tombstone value
-const COMPRESSION_WINDOW_SIZE = 1024 * 32 // The compression window size
+const SSTABLE_EXTENSION = ".sst"                  // The SSTable file extension
+const LOG_EXTENSION = ".log"                      // The log file extension
+const WAL_EXTENSION = ".wal"                      // The write ahead log file extension
+const TOMBSTONE_VALUE = "$tombstone"              // The tombstone value
+const COMPRESSION_WINDOW_SIZE = 1024 * 32         // The compression window size
+const BACKGROUND_OP_SLEEP = 28 * time.Millisecond // The background sleep time for the background operations
 
 // K4 is the main structure for the k4 database
 type K4 struct {
@@ -311,7 +312,7 @@ func (k4 *K4) Close() error {
 // takes a string message
 func (k4 *K4) printLog(msg string) {
 	if k4.logging {
-		log.Println(msg)
+		log.Println(msg) // will log to the log file
 	}
 }
 
@@ -357,8 +358,8 @@ func (k4 *K4) backgroundWalWriter() {
 					k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err)) // Log error
 				}
 			} else {
-				k4.walQueueLock.Unlock()          // Unlock the wal queue
-				time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
+				k4.walQueueLock.Unlock()        // Unlock the wal queue
+				time.Sleep(BACKGROUND_OP_SLEEP) // If you have a speedy loop your cpu will be cycled greatly
 				// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
 			}
 		}
@@ -1705,8 +1706,8 @@ func (k4 *K4) backgroundFlusher() {
 				}
 
 			} else {
-				k4.flushQueueLock.Unlock()        // unlock flush queue
-				time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
+				k4.flushQueueLock.Unlock()      // unlock flush queue
+				time.Sleep(BACKGROUND_OP_SLEEP) // If you have a speedy loop your cpu will be cycled greatly
 				// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
 			}
 		}
@@ -1734,7 +1735,7 @@ func (k4 *K4) backgroundCompactor() {
 
 				k4.lastCompaction = time.Now() // We set the last compaction time too now to reset the timer
 			} else {
-				time.Sleep(28 * time.Millisecond) // If you have a speedy loop your cpu will be cycled greatly
+				time.Sleep(BACKGROUND_OP_SLEEP) // If you have a speedy loop your cpu will be cycled greatly
 				// What we do here is sleep for a tiny bit of time each iteration if no work is to be done
 			}
 		}
@@ -1864,13 +1865,14 @@ func (it *Iterator) Prev() ([]byte, []byte) {
 
 // Reset resets the iterator
 func (it *Iterator) Reset() {
-	it.memtableIter = skiplist.NewIterator(it.instance.memtable)
-	it.sstIterIndex = len(it.instance.sstables) - 1
+	it.memtableIter = skiplist.NewIterator(it.instance.memtable) // We reset the memtable iterator
+	it.sstIterIndex = len(it.instance.sstables) - 1              // We reset the sstable iterator index
 
+	// We reset the sstable iterators
 	for i := 0; i < len(it.sstablesIter); i++ {
 		it.sstablesIter[i] = newSSTableIterator(it.instance.sstables[i].pager, it.instance.sstables[i].compressed)
 	}
 
-	it.prevStarted = false
+	it.prevStarted = false // We reset the prevStarted to false
 
 }
