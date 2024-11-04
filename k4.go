@@ -1776,6 +1776,8 @@ func greaterThan(a, b []byte) bool {
 
 // NewIterator creates a new Iterator
 func NewIterator(instance *K4) *Iterator {
+	instance.sstablesLock.RLock() // Lock the sstables as we are gonna check how many sstables we have
+	defer instance.sstablesLock.RUnlock()
 	sstablesIter := make([]*SSTableIterator, len(instance.sstables))
 	for i, sstable := range instance.sstables {
 		sstablesIter[i] = newSSTableIterator(sstable.pager, sstable.compressed)
@@ -1783,7 +1785,7 @@ func NewIterator(instance *K4) *Iterator {
 	return &Iterator{
 		memtableIter: skiplist.NewIterator(instance.memtable),
 		sstablesIter: sstablesIter,
-		sstIterIndex: 0,
+		sstIterIndex: len(instance.sstables) - 1, // we should start at the latest sstable
 	}
 }
 
