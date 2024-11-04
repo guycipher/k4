@@ -37,13 +37,7 @@ import "C"
 import (
 	"github.com/guycipher/k4"
 	"time"
-)
-
-var (
-	globalDB   *k4.K4          // The global database instance
-	currentTxn *k4.Transaction // The current transaction, can be nil
-	iter       *k4.Iterator    // The current iterator, can be nil
-	// What differs in the C library as you can have 1 global database instance and 1 current transaction at a time
+	"unsafe"
 )
 
 const (
@@ -55,20 +49,19 @@ const (
 )
 
 //export db_open
-func db_open(directory *C.char, memtableFlushThreshold C.int, compactionInterval C.int, logging C.int, compress C.int) C.int {
+func db_open(directory *C.char, memtableFlushThreshold C.int, compactionInterval C.int, logging C.int, compress C.int) unsafe.Pointer {
 	db, err := k4.Open(C.GoString(directory), int(memtableFlushThreshold), int(compactionInterval), logging != 0, compress != 0)
 	if err != nil {
-		return -1
+		return nil
 	}
 
-	globalDB = db
-
-	return 0
+	return unsafe.Pointer(db)
 }
 
 //export db_close
-func db_close() C.int {
-	err := globalDB.Close()
+func db_close(dbPtr unsafe.Pointer) C.int {
+	db := (*k4.K4)(dbPtr)
+	err := db.Close()
 	if err != nil {
 		return -1
 	}
@@ -77,10 +70,13 @@ func db_close() C.int {
 }
 
 //export db_put
-func db_put(key *C.char, value *C.char, ttl C.int64_t) C.int {
+func db_put(dbPtr unsafe.Pointer, key *C.char, keyLen C.int, value *C.char, valueLen C.int, ttl C.int64_t) C.int {
+	db := (*k4.K4)(dbPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	valueBytes := C.GoBytes(unsafe.Pointer(value), valueLen)
 
 	if ttl == -1 {
-		err := globalDB.Put([]byte(C.GoString(key)), []byte(C.GoString(value)), nil)
+		err := db.Put(keyBytes, valueBytes, nil)
 		if err != nil {
 			return -1
 		}
@@ -88,8 +84,7 @@ func db_put(key *C.char, value *C.char, ttl C.int64_t) C.int {
 	}
 
 	ttlDuration := time.Duration(ttl)
-
-	err := globalDB.Put([]byte(C.GoString(key)), []byte(C.GoString(value)), &ttlDuration)
+	err := db.Put(keyBytes, valueBytes, &ttlDuration)
 	if err != nil {
 		return -1
 	}
@@ -97,8 +92,10 @@ func db_put(key *C.char, value *C.char, ttl C.int64_t) C.int {
 }
 
 //export db_get
-func db_get(key *C.char) *C.char {
-	value, err := globalDB.Get([]byte(C.GoString(key)))
+func db_get(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) *C.char {
+	db := (*k4.K4)(dbPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	value, err := db.Get(keyBytes)
 	if err != nil {
 		return nil
 	}
@@ -106,8 +103,10 @@ func db_get(key *C.char) *C.char {
 }
 
 //export db_delete
-func db_delete(key *C.char) C.int {
-	err := globalDB.Delete([]byte(C.GoString(key)))
+func db_delete(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) C.int {
+	db := (*k4.K4)(dbPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	err := db.Delete(keyBytes)
 	if err != nil {
 		return -1
 	}
@@ -115,46 +114,47 @@ func db_delete(key *C.char) C.int {
 }
 
 //export begin_transaction
-func begin_transaction() C.int {
-	currentTxn = globalDB.BeginTransaction()
-	return 0
+func begin_transaction(dbPtr unsafe.Pointer) unsafe.Pointer {
+	db := (*k4.K4)(dbPtr)
+	tx := db.BeginTransaction()
+	return unsafe.Pointer(tx)
 }
 
 //export add_operation
-func add_operation(op C.int, key *C.char, value *C.char) C.int {
-	if currentTxn == nil {
-		return -1
-	}
+func add_operation(txPtr unsafe.Pointer, operation C.int, key *C.char, keyLen C.int, value *C.char, valueLen C.int) C.int {
+	txn := (*k4.Transaction)(txPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	valueBytes := C.GoBytes(unsafe.Pointer(value), valueLen)
 
-	currentTxn.AddOperation(k4.OPR_CODE(op), []byte(C.GoString(key)), []byte(C.GoString(value)))
+	txn.AddOperation(k4.OPR_CODE(operation), []byte(keyBytes), []byte(valueBytes))
 
 	return 0
 }
 
 //export remove_transaction
-func remove_transaction() C.int {
+func remove_transaction(dbPtr unsafe.Pointer, txPtr unsafe.Pointer) {
+	db := (*k4.K4)(dbPtr)
+	txn := (*k4.Transaction)(txPtr)
+	txn.Remove(db)
 
-	currentTxn.Remove(globalDB)
-
-	currentTxn = nil
-
-	return 0
 }
 
-//export rollback_transaction
-func rollback_transaction() C.int {
-
-	err := currentTxn.Rollback(globalDB)
+//export commit_transaction
+func commit_transaction(txPtr unsafe.Pointer, dbPtr unsafe.Pointer) C.int {
+	txn := (*k4.Transaction)(txPtr)
+	db := (*k4.K4)(dbPtr)
+	err := txn.Commit(db)
 	if err != nil {
 		return -1
 	}
 	return 0
 }
 
-//export commit_transaction
-func commit_transaction() C.int {
-
-	err := currentTxn.Commit(globalDB)
+//export rollback_transaction
+func rollback_transaction(txPtr unsafe.Pointer, dbPtr unsafe.Pointer) C.int {
+	txn := (*k4.Transaction)(txPtr)
+	db := (*k4.K4)(dbPtr)
+	err := txn.Rollback(db)
 	if err != nil {
 		return -1
 	}
@@ -162,12 +162,9 @@ func commit_transaction() C.int {
 }
 
 //export recover_from_wal
-func recover_from_wal() C.int {
-	if globalDB == nil {
-		return -1
-	}
-
-	err := globalDB.RecoverFromWAL()
+func recover_from_wal(dbPtr unsafe.Pointer) C.int {
+	db := (*k4.K4)(dbPtr)
+	err := db.RecoverFromWAL()
 	if err != nil {
 		return -1
 	}
@@ -175,11 +172,12 @@ func recover_from_wal() C.int {
 }
 
 //export greater_than
-func greater_than(key *C.char) ([]*C.char, []*C.char) {
-	keysValuePairs, err := globalDB.GreaterThan([]byte(C.GoString(key)))
+func greater_than(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C.char) {
+	db := (*k4.K4)(dbPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.GreaterThan(keyBytes)
 	if err != nil {
 		return nil, nil
-
 	}
 
 	var cKeys []*C.char
@@ -192,14 +190,16 @@ func greater_than(key *C.char) ([]*C.char, []*C.char) {
 	}
 
 	return cKeys, cValues
+
 }
 
 //export less_than
-func less_than(key *C.char) ([]*C.char, []*C.char) {
-	keysValuePairs, err := globalDB.LessThan([]byte(C.GoString(key)))
+func less_than(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C.char) {
+	db := (*k4.K4)(dbPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.LessThan(keyBytes)
 	if err != nil {
 		return nil, nil
-
 	}
 
 	var cKeys []*C.char
@@ -215,11 +215,12 @@ func less_than(key *C.char) ([]*C.char, []*C.char) {
 }
 
 //export nget
-func nget(key *C.char) ([]*C.char, []*C.char) {
-	keysValuePairs, err := globalDB.NGet([]byte(C.GoString(key)))
+func nget(dbPtr unsafe.Pointer, key *C.char, keyLen C.int, n C.int) ([]*C.char, []*C.char) {
+	db := (*k4.K4)(dbPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.NGet(keyBytes)
 	if err != nil {
 		return nil, nil
-
 	}
 
 	var cKeys []*C.char
@@ -232,15 +233,15 @@ func nget(key *C.char) ([]*C.char, []*C.char) {
 	}
 
 	return cKeys, cValues
-
 }
 
 //export greater_than_eq
-func greater_than_eq(key *C.char) ([]*C.char, []*C.char) {
-	keysValuePairs, err := globalDB.GreaterThanEq([]byte(C.GoString(key)))
+func greater_than_eq(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C.char) {
+	db := (*k4.K4)(dbPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.GreaterThanEq(keyBytes)
 	if err != nil {
 		return nil, nil
-
 	}
 
 	var cKeys []*C.char
@@ -255,12 +256,13 @@ func greater_than_eq(key *C.char) ([]*C.char, []*C.char) {
 	return cKeys, cValues
 }
 
-// less_than_eq
-func less_than_eq(key *C.char) ([]*C.char, []*C.char) {
-	keysValuePairs, err := globalDB.LessThanEq([]byte(C.GoString(key)))
+//export less_than_eq
+func less_than_eq(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C.char) {
+	db := (*k4.K4)(dbPtr)
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.LessThanEq(keyBytes)
 	if err != nil {
 		return nil, nil
-
 	}
 
 	var cKeys []*C.char
@@ -276,11 +278,13 @@ func less_than_eq(key *C.char) ([]*C.char, []*C.char) {
 }
 
 //export range_
-func range_(start *C.char, end *C.char) ([]*C.char, []*C.char) {
-	keysValuePairs, err := globalDB.Range([]byte(C.GoString(start)), []byte(C.GoString(end)))
+func range_(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, endLen C.int) ([]*C.char, []*C.char) {
+	db := (*k4.K4)(dbPtr)
+	startBytes := C.GoBytes(unsafe.Pointer(start), startLen)
+	endBytes := C.GoBytes(unsafe.Pointer(end), endLen)
+	keysValuePairs, err := db.Range(startBytes, endBytes)
 	if err != nil {
 		return nil, nil
-
 	}
 
 	var cKeys []*C.char
@@ -293,15 +297,16 @@ func range_(start *C.char, end *C.char) ([]*C.char, []*C.char) {
 	}
 
 	return cKeys, cValues
-
 }
 
 //export nrange
-func nrange(start *C.char, end *C.char) ([]*C.char, []*C.char) {
-	keysValuePairs, err := globalDB.NRange([]byte(C.GoString(start)), []byte(C.GoString(end)))
+func nrange(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, endLen C.int, n C.int) ([]*C.char, []*C.char) {
+	db := (*k4.K4)(dbPtr)
+	startBytes := C.GoBytes(unsafe.Pointer(start), startLen)
+	endBytes := C.GoBytes(unsafe.Pointer(end), endLen)
+	keysValuePairs, err := db.NRange(startBytes, endBytes)
 	if err != nil {
 		return nil, nil
-
 	}
 
 	var cKeys []*C.char
@@ -314,36 +319,40 @@ func nrange(start *C.char, end *C.char) ([]*C.char, []*C.char) {
 	}
 
 	return cKeys, cValues
-
 }
 
 //export new_iterator
-func new_iterator() C.int {
-	iter = k4.NewIterator(globalDB)
-	return 0
+func new_iterator(dbPtr unsafe.Pointer) unsafe.Pointer {
+	db := (*k4.K4)(dbPtr)
+	iter := k4.NewIterator(db)
+	return unsafe.Pointer(iter)
 }
 
 //export iter_next
-func iter_next() (key *C.char, value *C.char) {
-	k, v := iter.Next()
-	if k == nil {
+func iter_next(iterPtr unsafe.Pointer) (*C.char, *C.char) {
+	iter := (*k4.Iterator)(iterPtr)
+	key, value := iter.Next()
+	if key == nil {
 		return nil, nil
 	}
 
-	return C.CString(string(k)), C.CString(string(v))
+	return C.CString(string(key)), C.CString(string(value))
 }
 
 //export iter_prev
-func iter_prev() (key *C.char, value *C.char) {
-	k, v := iter.Prev()
-	if k == nil {
+func iter_prev(iterPtr unsafe.Pointer) (*C.char, *C.char) {
+	iter := (*k4.Iterator)(iterPtr)
+	key, value := iter.Prev()
+	if key == nil {
 		return nil, nil
 	}
-	return C.CString(string(k)), C.CString(string(v))
+
+	return C.CString(string(key)), C.CString(string(value))
 }
 
 //export iter_reset
-func iter_reset() {
+func iter_reset(iterPtr unsafe.Pointer) {
+	iter := (*k4.Iterator)(iterPtr)
 	iter.Reset()
 }
 
