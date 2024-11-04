@@ -55,6 +55,8 @@ func db_open(directory *C.char, memtableFlushThreshold C.int, compactionInterval
 		return nil
 	}
 
+	// @todo fix panic: runtime error: cgo result is unpinned Go pointer or points to unpinned Go pointer
+
 	return unsafe.Pointer(db)
 }
 
@@ -65,6 +67,8 @@ func db_close(dbPtr unsafe.Pointer) C.int {
 	if err != nil {
 		return -1
 	}
+
+	C.free(unsafe.Pointer(dbPtr))
 
 	return 0
 }
