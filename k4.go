@@ -126,8 +126,9 @@ type WALIterator struct {
 
 // KV mainly used for serialization
 type KV struct {
-	Key   []byte // Binary array of key
-	Value []byte // Binary array of keys value
+	Key   []byte     // Binary array of key
+	Value []byte     // Binary array of keys value
+	TTL   *time.Time // Time to live
 }
 
 // KeyValueArray type to hold a slice of KeyValue's
@@ -405,7 +406,7 @@ func deserializeOp(data []byte) (OPR_CODE, []byte, []byte, error) {
 }
 
 // serializeKv serializes a key-value pair
-func serializeKv(key, value []byte) []byte {
+func serializeKv(key, value []byte, ttl *time.Time) []byte {
 	var buf bytes.Buffer // create a buffer
 
 	enc := gob.NewEncoder(&buf) // create a new encoder with the buffer
@@ -414,6 +415,7 @@ func serializeKv(key, value []byte) []byte {
 	kv := KV{
 		Key:   key,
 		Value: value,
+		TTL:   ttl,
 	}
 
 	// encode the key value pair
@@ -426,17 +428,17 @@ func serializeKv(key, value []byte) []byte {
 }
 
 // deserializeKv deserializes a key-value pair
-func deserializeKv(data []byte) (key, value []byte, err error) {
+func deserializeKv(data []byte) (key, value []byte, ttl *time.Time, err error) {
 	kv := KV{} // The key value pair to be deserialized
 
 	dec := gob.NewDecoder(bytes.NewReader(data)) // Create a new decoder
 
 	err = dec.Decode(&kv) // Decode the key value pair
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, kv.TTL, err
 	}
 
-	return kv.Key, kv.Value, nil
+	return kv.Key, kv.Value, kv.TTL, nil
 
 }
 
@@ -524,7 +526,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	for it.Next() {
 
 		// get the current key and value
-		key, val := it.Current()
+		key, val, _ := it.Current()
 		if key == nil {
 			continue
 		}
@@ -553,7 +555,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	it = skiplist.NewIterator(memtable)
 
 	for it.Next() {
-		key, value := it.Current()
+		key, value, ttl := it.Current()
 		if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			continue // skip tombstones
 		}
@@ -568,7 +570,16 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		}
 
 		// Serialize key-value pair
-		data := serializeKv(key, value)
+
+		var data []byte
+
+		if ttl != nil {
+			expiry := time.Now().Add(*ttl)
+			data = serializeKv(key, value, &expiry)
+		} else {
+
+			data = serializeKv(key, value, nil)
+		}
 
 		// Write to SSTable
 		_, err := sstable.pager.Write(data)
@@ -656,18 +667,30 @@ func (it *SSTableIterator) next() bool {
 }
 
 // current returns the current key-value pair in the SSTable
-func (it *SSTableIterator) current() ([]byte, []byte) {
+func (it *SSTableIterator) current() ([]byte, []byte, *time.Time) {
 	// Get the current page
 	data, err := it.pager.GetPage(int64(it.currentPage))
 	if err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Deserialize key-value pair
-	key, value, err := deserializeKv(data)
+	key, value, ttl, err := deserializeKv(data)
 	if err != nil {
 
-		return nil, nil
+		return nil, nil, ttl
+	}
+
+	// Check if key value has TTL set, if so we check if it has expired
+	if ttl != nil {
+		if time.Now().After(*ttl) {
+			// skip and go to next
+			if it.next() {
+				return it.current()
+			} else {
+				return nil, nil, nil
+			}
+		}
 	}
 
 	// Check for compression
@@ -675,11 +698,11 @@ func (it *SSTableIterator) current() ([]byte, []byte) {
 		// If so we decompress the key and value
 		key, value, err = decompressKeyValue(key, value)
 		if err != nil {
-			return nil, nil
+			return nil, nil, nil
 		}
 	}
 
-	return key, value
+	return key, value, ttl
 }
 
 // currentKey returns the current key in the SSTable
@@ -691,7 +714,7 @@ func (it *SSTableIterator) currentKey() []byte {
 	}
 
 	// Deserialize key-value pair
-	key, value, err := deserializeKv(data)
+	key, value, _, err := deserializeKv(data)
 	if err != nil {
 		return nil
 	}
@@ -831,7 +854,12 @@ func (k4 *K4) compact() error {
 		// iterate over the ith and (i+1)th sstable
 		it = newSSTableIterator(sstable1.pager, k4.compress)
 		for it.next() {
-			key, value := it.current()
+			key, value, ttl := it.current()
+			if ttl != nil {
+				if time.Now().After(*ttl) {
+					continue
+				}
+			}
 
 			// Check for compression
 			if k4.compress {
@@ -842,7 +870,7 @@ func (k4 *K4) compact() error {
 			}
 
 			// Serialize key-value pair
-			data := serializeKv(key, value)
+			data := serializeKv(key, value, ttl)
 
 			// Write to SSTable
 			_, err := newSstable.pager.Write(data)
@@ -854,7 +882,13 @@ func (k4 *K4) compact() error {
 		it = newSSTableIterator(sstable2.pager, k4.compress)
 
 		for it.next() {
-			key, value := it.current()
+			key, value, ttl := it.current()
+
+			if ttl != nil {
+				if time.Now().After(*ttl) {
+					continue
+				}
+			}
 
 			// Check for compression
 			if k4.compress {
@@ -865,7 +899,7 @@ func (k4 *K4) compact() error {
 			}
 
 			// Serialize key-value pair
-			data := serializeKv(key, value)
+			data := serializeKv(key, value, ttl)
 
 			// Write to SSTable
 			_, err := newSstable.pager.Write(data)
@@ -1240,9 +1274,15 @@ func (sstable *SSTable) get(key []byte) ([]byte, error) {
 	// Iterate over SSTable
 	it := newSSTableIterator(sstable.pager, sstable.compressed)
 	for it.next() {
-		k, v := it.current()
-
+		k, v, ttl := it.current()
 		if bytes.Equal(k, key) {
+			// check ttl
+			if ttl != nil {
+				if time.Now().After(*ttl) {
+					return nil, nil
+				}
+			}
+
 			return v, nil
 		}
 	}
@@ -1302,8 +1342,9 @@ func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
 	defer k4.memtableLock.RUnlock()
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
-		k, value := it.Current()
+		k, value, _ := it.Current()
 		if !bytes.Equal(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+
 			result.append(&KV{
 				Key:   k,
 				Value: value,
@@ -1323,9 +1364,17 @@ func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
 		sstable := sstablesCopy[i]
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
-			k, value := it.current()
+			k, value, ttl := it.current()
 			if !bytes.Equal(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+				// check ttl
+				if ttl != nil {
+					if time.Now().After(*ttl) {
+						continue
+					}
+				}
+
 				if _, exists := result.binarySearch(key); !exists {
+
 					result.append(&KV{
 						Key:   k,
 						Value: value,
@@ -1352,7 +1401,7 @@ func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error) {
 	defer k4.memtableLock.RUnlock()
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
-		k, value := it.Current()
+		k, value, _ := it.Current()
 		if greaterThan(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
@@ -1373,8 +1422,15 @@ func (k4 *K4) GreaterThan(key []byte) (*KeyValueArray, error) {
 		sstable := sstablesCopy[i]
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
-			k, value := it.current()
+			k, value, ttl := it.current()
 			if greaterThan(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+				// check ttl
+				if ttl != nil {
+					if time.Now().After(*ttl) {
+						continue
+					}
+				}
+
 				if _, exists := result.binarySearch(k); !exists {
 					result.append(&KV{
 						Key:   k,
@@ -1402,7 +1458,7 @@ func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error) {
 	defer k4.memtableLock.RUnlock()
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
-		k, value := it.Current()
+		k, value, _ := it.Current()
 		if (greaterThan(k, key) || bytes.Equal(k, key)) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
@@ -1423,8 +1479,15 @@ func (k4 *K4) GreaterThanEq(key []byte) (*KeyValueArray, error) {
 		sstable := sstablesCopy[i]
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
-			k, value := it.current()
+			k, value, ttl := it.current()
 			if (greaterThan(k, key) || bytes.Equal(k, key)) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+				// check ttl
+				if ttl != nil {
+					if time.Now().After(*ttl) {
+						continue
+					}
+				}
+
 				if _, exists := result.binarySearch(k); !exists {
 					result.append(&KV{
 						Key:   k,
@@ -1452,7 +1515,7 @@ func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error) {
 	defer k4.memtableLock.RUnlock()
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
-		k, value := it.Current()
+		k, value, _ := it.Current()
 		if lessThan(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
@@ -1473,8 +1536,15 @@ func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error) {
 		sstable := sstablesCopy[i]
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
-			k, value := it.current()
+			k, value, ttl := it.current()
 			if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+				// check ttl
+				if ttl != nil {
+					if time.Now().After(*ttl) {
+						continue
+					}
+				}
+
 				if _, exists := result.binarySearch(k); !exists {
 					result.append(&KV{
 						Key:   k,
@@ -1502,7 +1572,7 @@ func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error) {
 	defer k4.memtableLock.RUnlock()
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
-		k, value := it.Current()
+		k, value, _ := it.Current()
 		if (lessThan(k, key) || bytes.Equal(k, key)) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			result.append(&KV{
 				Key:   k,
@@ -1523,8 +1593,15 @@ func (k4 *K4) LessThanEq(key []byte) (*KeyValueArray, error) {
 		sstable := sstablesCopy[i]
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
-			k, value := it.current()
+			k, value, ttl := it.current()
 			if (lessThan(k, key) || bytes.Equal(k, key)) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+				// check ttl
+				if ttl != nil {
+					if time.Now().After(*ttl) {
+						continue
+					}
+				}
+
 				if _, exists := result.binarySearch(k); !exists {
 					result.append(&KV{
 						Key:   k,
@@ -1551,7 +1628,7 @@ func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
 	k4.memtableLock.RLock()
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
-		key, value := it.Current()
+		key, value, _ := it.Current()
 		if (greaterThan(key, startKey) || bytes.Equal(key, startKey)) && (lessThan(key, endKey) || bytes.Equal(key, endKey)) {
 			if !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 				result.append(&KV{
@@ -1575,9 +1652,16 @@ func (k4 *K4) Range(startKey, endKey []byte) (*KeyValueArray, error) {
 		sstable := sstablesCopy[i]
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
-			key, value := it.current()
+			key, value, ttl := it.current()
 			if (greaterThan(key, startKey) || bytes.Equal(key, startKey)) && (lessThan(key, endKey) || bytes.Equal(key, endKey)) {
 				if !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+					// check ttl
+					if ttl != nil {
+						if time.Now().After(*ttl) {
+							continue
+						}
+					}
+
 					if _, exists := result.binarySearch(key); !exists {
 						result.append(&KV{
 							Key:   key,
@@ -1605,7 +1689,7 @@ func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
 	k4.memtableLock.RLock()
 	it := skiplist.NewIterator(k4.memtable)
 	for it.Next() {
-		key, value := it.Current()
+		key, value, _ := it.Current()
 		if !(greaterThan(key, startKey) || bytes.Equal(key, startKey)) || !(lessThan(key, endKey) || bytes.Equal(key, endKey)) {
 			if !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 				result.append(&KV{
@@ -1627,9 +1711,16 @@ func (k4 *K4) NRange(startKey, endKey []byte) (*KeyValueArray, error) {
 		sstable := sstablesCopy[i]
 		it := newSSTableIterator(sstable.pager, k4.compress)
 		for it.next() {
-			key, value := it.current()
+			key, value, ttl := it.current()
 			if !(greaterThan(key, startKey) || bytes.Equal(key, startKey)) || !(lessThan(key, endKey) || bytes.Equal(key, endKey)) {
 				if !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+					// check ttl
+					if ttl != nil {
+						if time.Now().After(*ttl) {
+							continue
+						}
+					}
+
 					if _, exists := result.binarySearch(key); !exists {
 						result.append(&KV{
 							Key:   key,
@@ -1806,14 +1897,31 @@ func NewIterator(instance *K4) *Iterator {
 func (it *Iterator) Next() ([]byte, []byte) {
 	// Check memtable
 	if it.memtableIter.Next() {
-		return it.memtableIter.Current()
+		k, v, _ := it.memtableIter.Current()
+		if k != nil {
+			if bytes.Equal(v, []byte(TOMBSTONE_VALUE)) {
+				return it.Next() // If the value is a tombstone we skip it
+			}
+		}
+		return k, v
 	}
 
 	// Iterate through SSTables
 	for it.sstIterIndex >= 0 {
 		if it.sstablesIter[it.sstIterIndex].next() {
-			key, value := it.sstablesIter[it.sstIterIndex].current()
+			key, value, ttl := it.sstablesIter[it.sstIterIndex].current()
 			if key != nil {
+				if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+					continue
+				}
+
+				// check ttl
+				if ttl != nil {
+					if time.Now().After(*ttl) {
+						continue
+					}
+				}
+
 				return key, value
 			}
 		} else {
@@ -1828,16 +1936,28 @@ func (it *Iterator) Next() ([]byte, []byte) {
 // Prev moves the iterator to the previous key-value pair
 func (it *Iterator) Prev() ([]byte, []byte) {
 	if !it.prevStarted {
-		if k, v := it.memtableIter.Current(); k != nil {
+		if k, v, _ := it.memtableIter.Current(); k != nil {
 			it.prevStarted = true // We set the prevStarted to true to indicate we have started the prev iteration
 			// We do this to get the last element in the memtable
+
+			if bytes.Equal(v, []byte(TOMBSTONE_VALUE)) {
+				return it.Prev() // If the value is a tombstone we skip it
+			}
+
 			return k, v
 		}
 	}
 
 	// Check memtable
 	if it.memtableIter.Prev() {
-		return it.memtableIter.Current()
+		k, v, _ := it.memtableIter.Current()
+		if k != nil {
+			if bytes.Equal(v, []byte(TOMBSTONE_VALUE)) {
+				return it.Prev() // If the value is a tombstone we skip it
+			}
+		}
+
+		return k, v
 	}
 
 	if it.sstIterIndex == -1 {
@@ -1849,8 +1969,18 @@ func (it *Iterator) Prev() ([]byte, []byte) {
 	for it.sstIterIndex < len(it.sstablesIter) {
 
 		if it.sstablesIter[it.sstIterIndex].prev() {
-			key, value := it.sstablesIter[it.sstIterIndex].current()
+			key, value, ttl := it.sstablesIter[it.sstIterIndex].current()
 			if key != nil {
+				if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+					continue
+				}
+
+				if ttl != nil {
+					if time.Now().After(*ttl) {
+						continue
+					}
+				}
+
 				return key, value
 			}
 		} else {
