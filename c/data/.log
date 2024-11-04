@@ -1,0 +1,15 @@
+2024/11/04 02:49:30 Background WAL writer started
+2024/11/04 02:49:30 Background flusher started
+2024/11/04 02:49:30 Background compactor started
+2024/11/04 02:49:30 K4 opened successfully
+2024/11/04 02:49:30 Background compactor started
+2024/11/04 02:49:30 Closing up
+2024/11/04 02:49:30 Memtable is of size 56 bytes and must be flushed to disk
+2024/11/04 02:49:30 Waiting for background operations to finish
+2024/11/04 02:49:30 Flushing memtable off flush queue
+2024/11/04 02:49:30 Flushed memtable
+2024/11/04 02:49:30 Background operations finished
+2024/11/04 02:49:30 Closing SSTables
+2024/11/04 02:49:30 SSTables closed
+2024/11/04 02:49:30 Closing WAL
+2024/11/04 02:49:30 WAL closed
