@@ -1802,7 +1802,10 @@ func (it *Iterator) Next() ([]byte, []byte) {
 	if it.sstablesIter[it.sstIterIndex].next() {
 		return it.sstablesIter[it.sstIterIndex].current()
 	} else {
-		it.sstIterIndex--
+		it.sstIterIndex--        // go to the next sstable
+		if it.sstIterIndex < 0 { // if we have no more sstables to check
+			return nil, nil
+		}
 	}
 
 	return nil, nil
@@ -1820,7 +1823,10 @@ func (it *Iterator) Prev() ([]byte, []byte) {
 	if it.sstablesIter[it.sstIterIndex].prev() {
 		return it.sstablesIter[it.sstIterIndex].current()
 	} else {
-		it.sstIterIndex++
+		it.sstIterIndex++                            // go to the next sstable
+		if it.sstIterIndex >= len(it.sstablesIter) { // if we have no more sstables to check
+			return nil, nil
+		}
 	}
 
 	return nil, nil

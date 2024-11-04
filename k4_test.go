@@ -286,6 +286,13 @@ func TestIterator(t *testing.T) {
 		expectedKeys[string(key)] = false
 	}
 
+	// Verify all keys are false after forward iteration
+	for k, v := range expectedKeys {
+		if v {
+			t.Fatalf("Key %s was not iterated over in forward direction", k)
+		}
+	}
+
 	// Now we go backwards and mark the keys we find true
 	for {
 		key, _ := it.Prev()
@@ -299,10 +306,10 @@ func TestIterator(t *testing.T) {
 		expectedKeys[string(key)] = true
 	}
 
-	// Verify all keys are true
+	// Verify all keys are true after backward iteration
 	for k, v := range expectedKeys {
 		if !v {
-			t.Fatalf("Expected key not found %s", k)
+			t.Fatalf("Key %s was not iterated over in backward direction", k)
 		}
 	}
 }
