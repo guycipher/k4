@@ -329,6 +329,7 @@ func iter_next() (key *C.char, value *C.char) {
 	if k == nil {
 		return nil, nil
 	}
+
 	return C.CString(string(k)), C.CString(string(v))
 }
 
