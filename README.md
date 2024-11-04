@@ -77,7 +77,7 @@ This is GO code that demonstrates how to use K4.  The code is simple and demonst
 
 ```go
 import (
-    "github.com/guycipher/k4"
+    "github.com/guycipher/k4/v2"
     "log"
 )
 

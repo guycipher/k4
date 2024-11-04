@@ -1,2 +1,4 @@
 github.com/guycipher/k4 v1.9.3 h1:cxn3slGV22ExCZPFne6qtJP+UsuuWOG7pyuhqiWLW0U=
 github.com/guycipher/k4 v1.9.3/go.mod h1:j1faqUqiDiz9I7Qiu/2l5BjeRzkk/CssoDNm8pG4g8g=
+github.com/guycipher/k4/v2 v2.1.1 h1:VLqvBDF9JvRJAcqD0qUvy4rZ2JxqZj17ziavesYEsAc=
+github.com/guycipher/k4/v2 v2.1.1/go.mod h1:97sG2QHxtszTHCJFtS/DThKITDSWIBkEz7mC0DGWLUM=
