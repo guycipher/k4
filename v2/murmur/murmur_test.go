@@ -32,7 +32,7 @@
 package murmur
 
 import (
-	"github.com/guycipher/k4/fuzz"
+	"github.com/guycipher/k4/v2/fuzz"
 	"testing"
 	"time"
 )

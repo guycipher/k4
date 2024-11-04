@@ -32,7 +32,7 @@ package hashset
 
 import (
 	"fmt"
-	"github.com/guycipher/k4/pager"
+	"github.com/guycipher/k4/v2/pager"
 	"os"
 	"testing"
 )

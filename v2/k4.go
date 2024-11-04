@@ -1,4 +1,4 @@
-// Package k4
+// Package k4 v2.x.x
 // BSD 3-Clause License
 //
 // Copyright (c) 2024, Alex Gaetano Padula
@@ -34,10 +34,10 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"github.com/guycipher/k4/compressor"
-	"github.com/guycipher/k4/hashset"
-	"github.com/guycipher/k4/pager"
-	"github.com/guycipher/k4/skiplist"
+	"github.com/guycipher/k4/v2/compressor"
+	"github.com/guycipher/k4/v2/hashset"
+	"github.com/guycipher/k4/v2/pager"
+	"github.com/guycipher/k4/v2/skiplist"
 	"log"
 	"os"
 	"sort"

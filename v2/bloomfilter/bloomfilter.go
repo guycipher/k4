@@ -34,7 +34,7 @@ package bloomfilter
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/guycipher/k4/murmur"
+	"github.com/guycipher/k4/v2/murmur"
 	"math"
 )
 

@@ -334,7 +334,7 @@ func (it *SkipListIterator) HasPrev() bool {
 }
 
 // Current returns the current key and value
-func (it *SkipListIterator) Current() ([]byte, []byte, *time.Duration) {
+func (it *SkipListIterator) Current() ([]byte, []byte) {
 	if it.current == it.skipList.header || it.current.IsExpired() {
 		// If expired we will set tombstone and delete later
 		if it.current.IsExpired() {
@@ -348,20 +348,9 @@ func (it *SkipListIterator) Current() ([]byte, []byte, *time.Duration) {
 			// Add the size of the tombstone
 			it.skipList.size += it.current.Size()
 		}
-		return nil, nil, nil
+		return nil, nil
 	}
-	return it.current.key, it.current.value, timeToDuration(it.current.ttl)
-}
-
-// timeToDuration converts a time.Time to a time.Duration
-func timeToDuration(t *time.Time) *time.Duration {
-	if t == nil {
-		return nil
-	}
-
-	duration := t.Sub(time.Now())
-	return &duration
-
+	return it.current.key, it.current.value
 }
 
 // Size returns the size of the skip list
@@ -374,9 +363,9 @@ func (sl *SkipList) Copy() *SkipList {
 	newSkipList := NewSkipList(sl.maxLevel, sl.p)
 	it := NewIterator(sl)
 	for it.Next() {
-		key, value, ttl := it.Current()
+		key, value := it.Current()
 		if value != nil && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
-			newSkipList.Insert(key, value, ttl)
+			newSkipList.Insert(key, value, nil)
 		}
 	}
 	return newSkipList

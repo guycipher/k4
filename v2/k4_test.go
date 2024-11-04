@@ -33,7 +33,7 @@ package k4
 import (
 	"bytes"
 	"fmt"
-	"github.com/guycipher/k4/fuzz"
+	"github.com/guycipher/k4/v2/fuzz"
 	"io/ioutil"
 	"os"
 	"strings"

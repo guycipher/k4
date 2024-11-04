@@ -35,7 +35,7 @@ package hashset
 import (
 	"bytes"
 	"encoding/gob"
-	"github.com/guycipher/k4/murmur"
+	"github.com/guycipher/k4/v2/murmur"
 )
 
 const initialCapacity = 32

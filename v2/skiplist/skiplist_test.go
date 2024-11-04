@@ -116,14 +116,14 @@ func TestIterator(t *testing.T) {
 	if !it.Next() {
 		t.Fatal("Expected iterator to move to the first element")
 	}
-	k, v := it.Current()
+	k, v, _ := it.Current()
 	if string(k) != string(key1) || string(v) != string(value1) {
 		t.Fatalf("Expected key %s and value %s, got key %s and value %s", key1, value1, k, v)
 	}
 	if !it.Next() {
 		t.Fatal("Expected iterator to move to the second element")
 	}
-	k, v = it.Current()
+	k, v, _ = it.Current()
 	if string(k) != string(key2) || string(v) != string(value2) {
 		t.Fatalf("Expected key %s and value %s, got key %s and value %s", key2, value2, k, v)
 	}

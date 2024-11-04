@@ -35,7 +35,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/guycipher/k4/murmur"
+	"github.com/guycipher/k4/v2/murmur"
 )
 
 // Compressor is the main compression package struct
