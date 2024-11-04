@@ -788,158 +788,171 @@ func (it *WALIterator) current() (OPR_CODE, []byte, []byte) {
 	return op, key, value
 }
 
-// compact compacts K4's sstables by pairing and merging
+// compact compacts K4's sstables by pairing and merging them in parallel
 func (k4 *K4) compact() error {
-	k4.sstablesLock.Lock()
-	defer k4.sstablesLock.Unlock()
+	k4.sstablesLock.Lock()         // lock up the sstables to prevent reads while we are compacting
+	defer k4.sstablesLock.Unlock() // defer unlocking the sstables
 
 	k4.printLog("Starting compaction")
 
-	// we merge the first sstable with the second sstable and so on
-	// each merge creates a new sstable, removing the former sstables
+	pairs := len(k4.sstables) / 2      // determine the number of pairs
+	var wg sync.WaitGroup              // create a wait group
+	newSStables := make([]*SSTable, 0) // create a new slice of sstables
+	sstablesToRemove := make([]int, 0) // create a new slice of sstables to remove
+	routinesLock := &sync.Mutex{}      // create a new mutex for the routines
 
-	// we will figure out how many pairs we can make
-	pairs := len(k4.sstables) / 2
-
-	// we start from oldest sstables
+	// iterate over the pairs of sstables
 	for i := 0; i < pairs*2; i += 2 {
+
+		// if we are at the end of the sstables we break
 		if i+1 >= len(k4.sstables) {
 			break
 		}
 
-		// we will merge the ith sstable with the (i+1)th sstable
-		// we will create a new sstable and write the merged data to it
-		// then we will remove the ith and (i+1)th sstable
-		// then we will add the new sstable to the list of sstables
+		// increment the wait group
+		wg.Add(1)
 
-		// we will create a hash set which will be on initial pages of sstable
-		// we will add all the keys to the hashset
-		// then we will add the key value pairs to the sstable
+		// start a goroutine to compact the pair of sstables into a new sstable
+		go func(i int, sstablesToRemove *[]int, newSStables *[]*SSTable, routinesLock *sync.Mutex) {
+			defer wg.Done() // defer completion of goroutine
 
-		// create a hashset
-		hs := hashset.NewHashSet()
+			hs := hashset.NewHashSet() // create a new hashset
 
-		// create a new sstable
-		newSstable, err := k4.createSSTableNoLock()
-		if err != nil {
-			return err
-		}
+			// create a new sstable
+			newSstable, err := k4.createSSTableNoLock()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to create SSTable: %v", err))
+				return
+			}
 
-		// get the ith and (i+1)th sstable
-		sstable1 := k4.sstables[i]
-		sstable2 := k4.sstables[i+1]
+			// set sst1 and sst2 to the sstables at index i and i+1
+			sstable1 := k4.sstables[i]
+			sstable2 := k4.sstables[i+1]
 
-		// add all the keys to the hash set
-		it := newSSTableIterator(sstable1.pager, k4.compress)
-		for it.next() {
-			key := it.currentKey()
-			hs.Add(key)
-		}
+			// create a new iterator for sstable1
+			it := newSSTableIterator(sstable1.pager, k4.compress)
+			for it.next() {
+				// iterate over the keys in sstable1 and add them to the hashset
+				key := it.currentKey()
+				hs.Add(key)
+			}
 
-		it = newSSTableIterator(sstable2.pager, k4.compress)
-		for it.next() {
-			key := it.currentKey()
-			hs.Add(key)
-		}
+			// create a new iterator for sstable2
+			it = newSSTableIterator(sstable2.pager, k4.compress)
+			for it.next() {
+				// iterate over the keys in sstable2 and add them to the hashset
+				key := it.currentKey()
+				hs.Add(key)
+			}
 
-		// serialize the hashset
-		hsData, err := hs.Serialize()
-		if err != nil {
-			return err
-		}
+			// serialize the hashset
+			hsData, err := hs.Serialize()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to serialize hashset: %v", err))
+				return
+			}
 
-		// Write the hashset to the SSTable
-		_, err = newSstable.pager.Write(hsData)
-		if err != nil {
-			return err
-		}
+			// wrote hashset to initial sstable pages
+			_, err = newSstable.pager.Write(hsData)
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to write hashset to SSTable: %v", err))
+				return
+			}
 
-		// iterate over the ith and (i+1)th sstable
-		it = newSSTableIterator(sstable1.pager, k4.compress)
-		for it.next() {
-			key, value, ttl := it.current()
-			if ttl != nil {
-				if time.Now().After(*ttl) {
+			// create a new iterator for sstable1 to add entries to the new sstable
+			it = newSSTableIterator(sstable1.pager, k4.compress)
+			for it.next() {
+				key, value, ttl := it.current()
+				if ttl != nil && time.Now().After(*ttl) { // if the key has expired we skip it
 					continue
 				}
-			}
 
-			// Check for compression
-			if k4.compress {
-				key, value, err = compressKeyValue(key, value)
+				// Check for compression
+				if k4.compress {
+					key, value, err = compressKeyValue(key, value) // compress key and value
+					if err != nil {
+						k4.printLog(fmt.Sprintf("Failed to compress key-value: %v", err))
+						return
+					}
+				}
+
+				data := serializeKv(key, value, ttl)
+				_, err := newSstable.pager.Write(data)
 				if err != nil {
-					return err
+					k4.printLog(fmt.Sprintf("Failed to write key-value to SSTable: %v", err))
+					return
 				}
 			}
 
-			// Serialize key-value pair
-			data := serializeKv(key, value, ttl)
-
-			// Write to SSTable
-			_, err := newSstable.pager.Write(data)
-			if err != nil {
-				return err
-			}
-		}
-
-		it = newSSTableIterator(sstable2.pager, k4.compress)
-
-		for it.next() {
-			key, value, ttl := it.current()
-
-			if ttl != nil {
-				if time.Now().After(*ttl) {
+			// create a new iterator for sstable2 to add entries to the new sstable
+			it = newSSTableIterator(sstable2.pager, k4.compress)
+			for it.next() {
+				key, value, ttl := it.current()
+				if ttl != nil && time.Now().After(*ttl) { // if the key has expired we skip it
 					continue
 				}
-			}
 
-			// Check for compression
-			if k4.compress {
-				key, value, err = compressKeyValue(key, value)
+				// Check for compression
+				if k4.compress {
+					key, value, err = compressKeyValue(key, value) // compress key and value
+					if err != nil {
+						k4.printLog(fmt.Sprintf("Failed to compress key-value: %v", err))
+						return
+					}
+				}
+
+				data := serializeKv(key, value, ttl)   // serialize key-value pair
+				_, err := newSstable.pager.Write(data) // write to new sstable
 				if err != nil {
-					return err
+					k4.printLog(fmt.Sprintf("Failed to write key-value to SSTable: %v", err))
+					return
 				}
 			}
 
-			// Serialize key-value pair
-			data := serializeKv(key, value, ttl)
-
-			// Write to SSTable
-			_, err := newSstable.pager.Write(data)
+			// close sstable1 and sstable2
+			err = sstable1.pager.Close()
 			if err != nil {
-				return err
+				k4.printLog(fmt.Sprintf("Failed to close SSTable1: %v", err))
+				return
 			}
-		}
 
-		// Remove the ith and (i+1)th sstable
-		err = sstable1.pager.Close()
-		if err != nil {
-			return err
-		}
+			err = sstable2.pager.Close()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to close SSTable2: %v", err))
+				return
+			}
 
-		err = sstable2.pager.Close()
-		if err != nil {
-			return err
-		}
+			routinesLock.Lock()
+			*sstablesToRemove = append(*sstablesToRemove, i)
+			*newSStables = append(*newSStables, newSstable)
+			routinesLock.Unlock()
 
-		// remove sstables from the list
-		k4.sstables = append(k4.sstables[:i], k4.sstables[i+2:]...)
+			err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i))
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to remove SSTable1 file: %v", err))
+				return
+			}
 
-		// Append SSTable to list of SSTables
-		k4.sstables = append(k4.sstables, newSstable)
-
-		// remove the paired sstables from the directory
-		err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i))
-		if err != nil {
-			return err
-		}
-
-		err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i+1))
-		if err != nil {
-			return err
-		}
-
+			err = os.Remove(k4.directory + string(os.PathSeparator) + sstableFilename(i+1))
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to remove SSTable2 file: %v", err))
+				return
+			}
+		}(i, &sstablesToRemove, &newSStables, routinesLock)
 	}
+
+	wg.Wait()
+
+	// remove paired sstables
+	for _, index := range sstablesToRemove {
+		if index >= len(k4.sstables) {
+			continue
+		}
+		k4.sstables = append(k4.sstables[:index], k4.sstables[index+2:]...)
+	}
+
+	// append new sstables
+	k4.sstables = append(k4.sstables, newSStables...)
 
 	k4.printLog("Compaction completed")
 
