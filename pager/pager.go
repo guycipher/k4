@@ -35,10 +35,14 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 )
 
-const PAGE_SIZE = 1024 * 4 // Page size
-const HEADER_SIZE = 256    // next (overflowed)
+const PAGE_SIZE = 1024 * 4                 // Page size
+const HEADER_SIZE = 256                    // next (overflowed)
+const SYNC_TICK_INTERVAL = 1 * time.Second // tick interval for syncing the file
+const SYNC_ESCALATION = 1 * time.Minute    // if the file is not synced in 1 minute, sync it
+const WRITE_THRESHOLD = 24576              // every 24576 writes, sync the file
 
 // Pager manages pages in a file
 type Pager struct {
@@ -46,6 +50,11 @@ type Pager struct {
 	pageLocks     map[int64]*sync.RWMutex // locks for pages
 	pageLocksLock *sync.RWMutex           // lock for pagesLocks
 	lock          *sync.RWMutex           // lock for the pager
+	stopSync      chan struct{}
+	once          sync.Once
+	wg            *sync.WaitGroup
+	writeCounter  int
+	lastSync      time.Time
 }
 
 // OpenPager opens a file for page management
@@ -67,7 +76,12 @@ func OpenPager(filename string, flag int, perm os.FileMode) (*Pager, error) {
 		pgLocks[i] = &sync.RWMutex{}
 	}
 
-	return &Pager{file: file, pageLocks: pgLocks, pageLocksLock: &sync.RWMutex{}, lock: &sync.RWMutex{}}, nil
+	pager := &Pager{file: file, pageLocks: pgLocks, pageLocksLock: &sync.RWMutex{}, lock: &sync.RWMutex{}, wg: &sync.WaitGroup{}}
+	pager.stopSync = make(chan struct{})
+	pager.wg.Add(1)
+	go pager.startPeriodicSync()
+
+	return pager, nil
 }
 
 // splitDataIntoChunks splits data into chunks of PAGE_SIZE
@@ -198,6 +212,8 @@ func (p *Pager) Write(data []byte) (int64, error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
+	p.writeCounter++
+
 	// get the current file size
 	fileInfo, err := p.file.Stat()
 	if err != nil {
@@ -228,6 +244,10 @@ func (p *Pager) Write(data []byte) (int64, error) {
 
 // Close closes the file
 func (p *Pager) Close() error {
+	p.stopSync <- struct{}{}
+
+	p.wg.Wait()
+
 	if p != nil {
 		return p.file.Close()
 	}
@@ -332,4 +352,36 @@ func (p *Pager) Count() int64 {
 // FileName returns the name of the file
 func (p *Pager) FileName() string {
 	return p.file.Name()
+}
+
+// startPeriodicSync starts a goroutine to periodically sync the file
+func (p *Pager) startPeriodicSync() {
+	defer p.wg.Done()
+
+	p.once.Do(func() {
+
+		ticker := time.NewTicker(SYNC_TICK_INTERVAL)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				if p.writeCounter < WRITE_THRESHOLD {
+					if time.Since(p.lastSync) < SYNC_ESCALATION { // check if the file is synced in SYNC_ESCALATION
+						continue
+					} // if the file is not synced in SYNC_ESCALATION, sync it
+
+				}
+				err := p.file.Sync()
+				if err != nil {
+					return
+				}
+				p.lock.Lock()
+				p.writeCounter = 0
+				p.lastSync = time.Now()
+				p.lock.Unlock()
+			case <-p.stopSync:
+				return
+			}
+		}
+	})
 }

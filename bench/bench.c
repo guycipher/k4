@@ -7,14 +7,14 @@
 #include <libk4.h>
 
 #define DB_PATH "testdb"
-#define NUM_OPS 10000
+#define NUM_OPS 1000000
 
-void benchmark_rocksdb();
+void benchmark_rocksdb(bool no_sync);
 void benchmark_lmdb();
 void benchmark_k4();
 
 int main() {
-    benchmark_rocksdb();
+    benchmark_rocksdb(true);
     benchmark_lmdb();
     benchmark_k4();
     return 0;
@@ -68,7 +68,7 @@ void benchmark_k4() {
     remove(DB_PATH);
 }
 
-void benchmark_rocksdb() {
+void benchmark_rocksdb(bool no_sync) {
     rocksdb_t *db;
     rocksdb_options_t *options = rocksdb_options_create();
     rocksdb_options_set_create_if_missing(options, 1);
@@ -80,6 +80,9 @@ void benchmark_rocksdb() {
         return;
     }
 
+    rocksdb_writeoptions_t *write_options = rocksdb_writeoptions_create();
+    rocksdb_writeoptions_set_sync(write_options, !no_sync);
+
     char key[20], value[20];
     clock_t start, end;
     double cpu_time_used;
@@ -89,7 +92,7 @@ void benchmark_rocksdb() {
     for (int i = 0; i < NUM_OPS; i++) {
         sprintf(key, "key%d", i);
         sprintf(value, "value%d", i);
-        rocksdb_put(db, rocksdb_writeoptions_create(), key, strlen(key), value, strlen(value), &err);
+        rocksdb_put(db, write_options, key, strlen(key), value, strlen(value), &err);
     }
     end = clock();
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
@@ -111,12 +114,13 @@ void benchmark_rocksdb() {
     start = clock();
     for (int i = 0; i < NUM_OPS; i++) {
         sprintf(key, "key%d", i);
-        rocksdb_delete(db, rocksdb_writeoptions_create(), key, strlen(key), &err);
+        rocksdb_delete(db, write_options, key, strlen(key), &err);
     }
     end = clock();
     cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
     printf("RocksDB Delete: %f seconds\n", cpu_time_used);
 
+    rocksdb_writeoptions_destroy(write_options);
     rocksdb_close(db);
     rocksdb_options_destroy(options);
 

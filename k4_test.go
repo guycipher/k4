@@ -496,7 +496,7 @@ func TestPutGet2(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, (1024*1024)*128, 60, false, false)
+	k4, err := Open(dir, (1024*1024)*128, 3600, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
