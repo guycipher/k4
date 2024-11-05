@@ -1,6 +1,6 @@
-## C library for K4
+# C library for K4
 
-Building C library
+## Building C library
 To build the K4 shared C library you require the latest version of Go installed on your system.
 
 You can get the latest version of Go lang from here https://go.dev/dl/
