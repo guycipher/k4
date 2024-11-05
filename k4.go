@@ -573,7 +573,6 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		}
 
 		// Serialize key-value pair
-
 		var data []byte
 
 		if ttl != nil {
@@ -607,8 +606,8 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 // createSSTable creates an SSTable
 // creates an sstable in directory, opens file and returns the sstable
 func (k4 *K4) createSSTable() (*SSTable, error) {
-	k4.sstablesLock.RLock()
-	defer k4.sstablesLock.RUnlock()
+	k4.sstablesLock.RLock()         // read lock
+	defer k4.sstablesLock.RUnlock() // unlock on defer
 
 	// Create SSTable file
 	sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644)
@@ -2016,7 +2015,7 @@ func (it *Iterator) Reset() {
 
 	// We reset the sstable iterators
 	for i := 0; i < len(it.sstablesIter); i++ {
-		it.sstablesIter[i] = newSSTableIterator(it.instance.sstables[i].pager, it.instance.sstables[i].compressed)
+		it.sstablesIter[i] = newSSTableIterator(it.instance.sstables[i].pager, it.instance.sstables[i].compressed) // Create new iterator for sstable
 	}
 
 	it.prevStarted = false // We reset the prevStarted to false
