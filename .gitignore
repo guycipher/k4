@@ -38,3 +38,4 @@ bench/bench
 bench/bench.exe
 bench/bench_random.c
 bench/bench_random.exe
+bench/testdb
