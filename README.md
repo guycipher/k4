@@ -274,18 +274,20 @@ func (k4 *K4) RecoverFromWAL() error
 ```
 
 ### What can you build with K4?
-- **Time series databases**
-- **Key-value stores**
-- **Distributed databases**
-- **Blockchain**
-- **Cache**
-- **Log store**
-- **Document store**
-- **Graph databases**
-- **Search engines**
-- **Data warehouses**
-- **Data lakes**
-- **Relational databases**
+- Time series databases
+- Object storage
+- Key-value stores
+- Distributed databases
+- Blockchain
+- Cache
+- Log store
+- Document store
+- Graph databases
+- Search engines
+- Data warehouses
+- Data lakes
+- Relational databases
+
 and more!
 
 If your project is using K4, please let us know! We would love to hear about it and promote it here.
