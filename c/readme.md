@@ -57,7 +57,11 @@ Example compile command
 ```
 cc -o example example.c -L/usr/local/lib -lk4 -I/usr/local/include
 ```
+### Note on TTL time
+If you want a TTL
+5000000000 is 5 seconds from now for example
 
+`ttl := 5 * time.Second` in GO resolves to 5000000000
 
 ### API
 ```c
