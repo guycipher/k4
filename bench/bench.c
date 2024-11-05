@@ -7,7 +7,7 @@
 #include <libk4.h>
 
 #define DB_PATH "testdb"
-#define NUM_OPS 1000000
+#define NUM_OPS 10000
 
 void benchmark_rocksdb(bool no_sync);
 void benchmark_lmdb();
