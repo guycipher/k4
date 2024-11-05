@@ -82,3 +82,5 @@ const k4 = ffi.Library('libk4', {
     'iter_reset': ['void', ['pointer']],
     'iter_close': ['void', ['pointer']]
 });
+
+module.exports = k4; // Export the k4 object

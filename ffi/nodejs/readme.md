@@ -2,6 +2,8 @@
 
 ## Examples
 ```javascript
+const k4 = require('./k4');
+
 const db = k4.db_open('data', 1024, 60, 1, 1);
 if (db.isNull()) {
     console.error('Failed to open database');
