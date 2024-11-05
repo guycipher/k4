@@ -50,11 +50,11 @@ type Pager struct {
 	pageLocks     map[int64]*sync.RWMutex // locks for pages
 	pageLocksLock *sync.RWMutex           // lock for pagesLocks
 	lock          *sync.RWMutex           // lock for the pager
-	stopSync      chan struct{}
-	once          sync.Once
-	wg            *sync.WaitGroup
-	writeCounter  int
-	lastSync      time.Time
+	stopSync      chan struct{}           // channel to stop background sync
+	once          sync.Once               // used to start the periodic sync once
+	wg            *sync.WaitGroup         // wait group for the periodic sync goroutine
+	writeCounter  int                     // counter for writes
+	lastSync      time.Time               // last time the file was synced
 }
 
 // OpenPager opens a file for page management
