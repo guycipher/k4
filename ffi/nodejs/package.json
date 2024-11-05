@@ -1,0 +1,15 @@
+{
+  "name": "k4",
+  "version": "0.9.0",
+  "description": "K4 storage engine Node.JS FFI",
+  "main": "k4.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Alex Gaetano Padula",
+  "license": "BSD-3-Clause",
+  "dependencies": {
+    "ffi-napi": "^4.0.3",
+    "ref-napi": "^3.0.3"
+  }
+}
