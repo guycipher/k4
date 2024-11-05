@@ -62,7 +62,7 @@ These are FFI's using the shared K4 C library.  They can be used as a building b
 
 
 ### Example usage
-This is GO code that demonstrates how to use K4.  The code is simple and demonstrates PUT, GET, and DELETE operations.
+This is **GO** code that demonstrates how to use K4.  The code is simple and demonstrates PUT, GET, and DELETE operations.
 
 ```go
 import (
@@ -73,7 +73,7 @@ import (
 func main() {
     var err error
     directory := "./data"
-    memtableFlushThreshold := 1024 * 1024 // 1MB
+    memtableFlushThreshold := (1024 * 1024) * 5 // 5MB
     compactionInterval := 3600 // 1 hour
     logging := true
     compression := false
