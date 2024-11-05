@@ -52,36 +52,45 @@ type BloomFilter struct {
 // NewBloomFilter initializes a new BloomFilter.
 func NewBloomFilter(size uint, numHashFuncs int) *BloomFilter {
 	bf := &BloomFilter{
-		bitset:    make([]bool, size),
-		size:      size,
-		hashFuncs: make([]func([]byte, uint64) uint64, numHashFuncs),
-		keys:      make([][]byte, 0),
+		bitset:    make([]bool, size),                                // Initialize the bitset
+		size:      size,                                              // Set the initial size
+		hashFuncs: make([]func([]byte, uint64) uint64, numHashFuncs), // Initialize the hash functions
+		keys:      make([][]byte, 0),                                 // Initialize the keys slice
 	}
 
+	// Initialize the hash functions
 	for i := 0; i < numHashFuncs; i++ {
-		bf.hashFuncs[i] = murmur.Hash64
+		bf.hashFuncs[i] = murmur.Hash64 // Use murmur hash function
 	}
 
-	return bf
+	return bf // Return the BloomFilter
 }
 
 // Add adds a key to the BloomFilter.
 func (bf *BloomFilter) Add(key []byte) {
+
+	// check if the BloomFilter should grow
 	if bf.shouldGrow() {
 		bf.resize(uint(float64(bf.size) * GROWTH_FACTOR)) // Resize using the growth factor
 	}
 
+	// Add the key to the BloomFilter
 	for _, hashFunc := range bf.hashFuncs {
-		index := hashFunc(key, 0) % uint64(bf.size)
-		bf.bitset[index] = true
+		index := hashFunc(key, 0) % uint64(bf.size) // Use the current size
+		bf.bitset[index] = true                     // Set the bit
 	}
-	bf.keys = append(bf.keys, key)
+	bf.keys = append(bf.keys, key) // Add the key to the keys slice
 }
 
 // Check checks if a key is possibly in the BloomFilter.
 func (bf *BloomFilter) Check(key []byte) bool {
+
+	// Check if the key is possibly in the BloomFilter
 	for _, hashFunc := range bf.hashFuncs {
+		// Calculate the index using the hash function and the current size
 		index := hashFunc(key, 0) % uint64(bf.size)
+
+		// If the bit is not set, the key is definitely not in the BloomFilter
 		if !bf.bitset[index] {
 			return false
 		}
@@ -105,25 +114,27 @@ func (bf *BloomFilter) resize(newSize uint) {
 
 	// Re-add all keys
 	for _, key := range bf.keys {
+		// Add the key to the new BloomFilter
 		for _, hashFunc := range bf.hashFuncs {
 			index := hashFunc(key, 0) % uint64(newSize) // Use the new size
-			newBitset[index] = true
+			newBitset[index] = true                     // Set the bit
 		}
 	}
 
+	// Update the BloomFilter
 	bf.bitset = newBitset
 	bf.size = newSize
 }
 
 // shouldGrow checks if the BloomFilter should grow.
 func (bf *BloomFilter) shouldGrow() bool {
-	setBits := 0
+	setBits := 0 // Number of set bits
 	for _, bit := range bf.bitset {
 		if bit {
-			setBits++
+			setBits++ // Increment the number of set bits
 		}
 	}
-	return setBits > int(float64(bf.size)*SHOULD_GROW_THRESHOLD)
+	return setBits > int(float64(bf.size)*SHOULD_GROW_THRESHOLD) // Check if the number of set bits is greater than the threshold
 }
 
 // Serialize serializes the BloomFilter to a byte slice
@@ -136,18 +147,20 @@ func (bf *BloomFilter) Serialize() ([]byte, error) {
 	}
 
 	// Write the number of hash functions
-	numHashFuncs := int32(len(bf.hashFuncs))
+	numHashFuncs := int32(len(bf.hashFuncs)) // Get the number of hash functions
 	if err := binary.Write(&buf, binary.LittleEndian, numHashFuncs); err != nil {
 		return nil, err
 	}
 
 	// Convert bitset to byte slice and write it
-	bitsetBytes := make([]byte, (bf.size+7)/8)
-	for i, bit := range bf.bitset {
+	bitsetBytes := make([]byte, (bf.size+7)/8) // Initialize the byte slice
+	for i, bit := range bf.bitset {            // Iterate over the bitset
 		if bit {
 			bitsetBytes[i/8] |= 1 << (i % 8) // Set the i-th bit
 		}
 	}
+
+	// Write the bitset
 	if _, err := buf.Write(bitsetBytes); err != nil {
 		return nil, err
 	}
@@ -176,7 +189,9 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 	if _, err := buf.Read(bitsetBytes); err != nil {
 		return nil, err
 	}
-	bitset := make([]bool, size)
+	bitset := make([]bool, size) // Initialize the bitset
+
+	// Convert the byte slice to a bitset
 	for i := range bitset {
 		bitset[i] = (bitsetBytes[i/8] & (1 << (i % 8))) != 0 // Check if the i-th bit is set
 	}
@@ -188,9 +203,9 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 	}
 
 	return &BloomFilter{
-		bitset:    bitset,
-		size:      uint(size),
-		hashFuncs: hashFuncs,
+		bitset:    bitset,            // Set the bitset
+		size:      uint(size),        // Set the size
+		hashFuncs: hashFuncs,         // Set the hash functions
 		keys:      make([][]byte, 0), // Initialize keys slice
 	}, nil
 }

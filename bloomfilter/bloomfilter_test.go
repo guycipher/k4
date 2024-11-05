@@ -40,18 +40,22 @@ import (
 )
 
 func TestNewBloomFilter(t *testing.T) {
-	size := uint(100)
-	numHashFuncs := 3
+	size := uint(100) // Set a small size for testing
+	numHashFuncs := 3 // Set a small number of hash functions for testing
+
 	bf := NewBloomFilter(size, numHashFuncs)
 
+	// Check if the BloomFilter is initialized correctly
 	if len(bf.bitset) != int(size) {
 		t.Errorf("Expected bitset size %d, got %d", size, len(bf.bitset))
 	}
 
+	// Check if the hash functions are initialized correctly
 	if len(bf.hashFuncs) != numHashFuncs {
 		t.Errorf("Expected %d hash functions, got %d", numHashFuncs, len(bf.hashFuncs))
 	}
 
+	// Check if the hash functions are initialized correctly
 	for _, hashFunc := range bf.hashFuncs {
 		if hashFunc == nil {
 			t.Error("Expected hash function to be initialized, got nil")
@@ -60,16 +64,20 @@ func TestNewBloomFilter(t *testing.T) {
 }
 
 func TestCheck(t *testing.T) {
-	bf := NewBloomFilter(100, 3)
+	bf := NewBloomFilter(100, 3) // Small size for testing
+
+	// Create two keys
 	key := []byte("testkey")
 	otherKey := []byte("otherkey")
 
-	bf.Add(key)
+	bf.Add(key) // Add key to BloomFilter
 
+	// Check if the key is present in the BloomFilter
 	if !bf.Check(key) {
 		t.Error("Expected key to be present in BloomFilter, got not present")
 	}
 
+	// Check if the otherKey is not present in the BloomFilter
 	if bf.Check(otherKey) {
 		t.Error("Expected otherKey to be not present in BloomFilter, got present")
 	}
