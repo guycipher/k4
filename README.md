@@ -273,6 +273,23 @@ func (txn *Transaction) Commit(k4 *K4) error
 func (k4 *K4) RecoverFromWAL() error
 ```
 
+### What can you build with K4?
+- **Time series databases**
+- **Key-value stores**
+- **Distributed databases**
+- **Blockchain**
+- **Cache**
+- **Log store**
+- **Document store**
+- **Graph databases**
+- **Search engines**
+- **Data warehouses**
+- **Data lakes**
+- **Relational databases**
+and more!
+
+If your project is using K4, please let us know! We would love to hear about it and promote it here.
+
 ### Reporting bugs
 If you find a bug with K4 create an issue on this repository but please do not include any sensitive information in the issue.  If you have a security concern please follow SECURITY.md.
 
