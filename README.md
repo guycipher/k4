@@ -69,7 +69,7 @@ K4 has a C library that can be used with FFIs (Foreign Function Interfaces) in o
 - [ ] [F#]()
 - [ ] [Ada]()
 - [ ] [R]()
-- [ ] [Node.JS]()
+- [x] [Node.JS]()
 
 
 ### Example usage
