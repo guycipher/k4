@@ -359,7 +359,7 @@ func timeToDuration(t *time.Time) *time.Duration {
 		return nil
 	}
 
-	duration := t.Sub(time.Now())
+	duration := t.Sub(time.Now()) // Calculate the remaining time
 	return &duration
 
 }
