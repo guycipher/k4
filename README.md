@@ -26,7 +26,7 @@ More benchmarks coming comparing against other storage engines.
 - High speed writes.  Reads are also fast but writes are the primary focus.
 - Durability
 - Optimized for RAM and flash storage (SSD)
-- Variable length binary keys and values.  Keys and their values can be any length
+- Variable length binary keys and values.  Keys and their values can be any size that paired don't exceed available memory at time of operation.
 - Write-Ahead Logging (WAL).  System writes PUT and DELETE operations to a log file before applying them to K4.
 - Atomic transactions.  Multiple PUT and DELETE operations can be grouped together and applied atomically to K4.
 - Multi-threaded parallel paired compaction.  SSTables are paired up during compaction and merged into a single SSTable(s).  This reduces the number of SSTables and minimizes disk I/O for read operations.
