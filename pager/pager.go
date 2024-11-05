@@ -248,6 +248,11 @@ func (p *Pager) Close() error {
 
 	p.wg.Wait()
 
+	// Ensure all pending writes are flushed to disk
+	if err := p.file.Sync(); err != nil {
+		return err
+	}
+
 	if p != nil {
 		return p.file.Close()
 	}
