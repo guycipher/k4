@@ -276,4 +276,192 @@ func nrange(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, en
 	return C.struct_KeyValuePairArray{pairs: (*C.struct_KeyValuePair)(cArray), numPairs: C.int(len(keysValuePairsSlice))}
 }
 
+//export greater_than
+func greater_than(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) C.struct_KeyValuePairArray {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.GreaterThan(keyBytes)
+	if err != nil {
+		return C.struct_KeyValuePairArray{pairs: nil, numPairs: 0}
+	}
+
+	// Convert keysValuePairs from *k4.KeyValueArray to a slice
+	keysValuePairsSlice := *keysValuePairs
+
+	// Allocate memory for the array of KeyValuePair structs
+	cArray := C.malloc(C.size_t(len(keysValuePairsSlice)) * C.size_t(unsafe.Sizeof(C.struct_KeyValuePair{})))
+	cKeyValuePairs := (*[1 << 30]C.struct_KeyValuePair)(cArray)[:len(keysValuePairsSlice):len(keysValuePairsSlice)]
+
+	// Populate the array with key-value pairs
+	for i, kv := range keysValuePairsSlice {
+		cKeyValuePairs[i].key = C.CString(string(kv.Key))
+		cKeyValuePairs[i].value = C.CString(string(kv.Value))
+	}
+
+	return C.struct_KeyValuePairArray{pairs: (*C.struct_KeyValuePair)(cArray), numPairs: C.int(len(keysValuePairsSlice))}
+}
+
+//export less_than
+func less_than(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) C.struct_KeyValuePairArray {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.LessThan(keyBytes)
+	if err != nil {
+		return C.struct_KeyValuePairArray{pairs: nil, numPairs: 0}
+	}
+
+	// Convert keysValuePairs from *k4.KeyValueArray to a slice
+	keysValuePairsSlice := *keysValuePairs
+
+	// Allocate memory for the array of KeyValuePair structs
+	cArray := C.malloc(C.size_t(len(keysValuePairsSlice)) * C.size_t(unsafe.Sizeof(C.struct_KeyValuePair{})))
+	cKeyValuePairs := (*[1 << 30]C.struct_KeyValuePair)(cArray)[:len(keysValuePairsSlice):len(keysValuePairsSlice)]
+
+	// Populate the array with key-value pairs
+	for i, kv := range keysValuePairsSlice {
+		cKeyValuePairs[i].key = C.CString(string(kv.Key))
+		cKeyValuePairs[i].value = C.CString(string(kv.Value))
+	}
+
+	return C.struct_KeyValuePairArray{pairs: (*C.struct_KeyValuePair)(cArray), numPairs: C.int(len(keysValuePairsSlice))}
+}
+
+//export nget
+func nget(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) C.struct_KeyValuePairArray {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.NGet(keyBytes)
+	if err != nil {
+		return C.struct_KeyValuePairArray{pairs: nil, numPairs: 0}
+	}
+
+	// Convert keysValuePairs from *k4.KeyValueArray to a slice
+	keysValuePairsSlice := *keysValuePairs
+
+	// Allocate memory for the array of KeyValuePair structs
+	cArray := C.malloc(C.size_t(len(keysValuePairsSlice)) * C.size_t(unsafe.Sizeof(C.struct_KeyValuePair{})))
+	cKeyValuePairs := (*[1 << 30]C.struct_KeyValuePair)(cArray)[:len(keysValuePairsSlice):len(keysValuePairsSlice)]
+
+	// Populate the array with key-value pairs
+	for i, kv := range keysValuePairsSlice {
+		cKeyValuePairs[i].key = C.CString(string(kv.Key))
+		cKeyValuePairs[i].value = C.CString(string(kv.Value))
+	}
+
+	return C.struct_KeyValuePairArray{pairs: (*C.struct_KeyValuePair)(cArray), numPairs: C.int(len(keysValuePairsSlice))}
+}
+
+//export greater_than_eq
+func greater_than_eq(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) C.struct_KeyValuePairArray {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.GreaterThanEq(keyBytes)
+	if err != nil {
+		return C.struct_KeyValuePairArray{pairs: nil, numPairs: 0}
+	}
+
+	// Convert keysValuePairs from *k4.KeyValueArray to a slice
+	keysValuePairsSlice := *keysValuePairs
+
+	// Allocate memory for the array of KeyValuePair structs
+	cArray := C.malloc(C.size_t(len(keysValuePairsSlice)) * C.size_t(unsafe.Sizeof(C.struct_KeyValuePair{})))
+	cKeyValuePairs := (*[1 << 30]C.struct_KeyValuePair)(cArray)[:len(keysValuePairsSlice):len(keysValuePairsSlice)]
+
+	// Populate the array with key-value pairs
+	for i, kv := range keysValuePairsSlice {
+		cKeyValuePairs[i].key = C.CString(string(kv.Key))
+		cKeyValuePairs[i].value = C.CString(string(kv.Value))
+	}
+
+	return C.struct_KeyValuePairArray{pairs: (*C.struct_KeyValuePair)(cArray), numPairs: C.int(len(keysValuePairsSlice))}
+}
+
+//export less_than_eq
+func less_than_eq(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) C.struct_KeyValuePairArray {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
+	keysValuePairs, err := db.LessThanEq(keyBytes)
+	if err != nil {
+		return C.struct_KeyValuePairArray{pairs: nil, numPairs: 0}
+	}
+
+	// Convert keysValuePairs from *k4.KeyValueArray to a slice
+	keysValuePairsSlice := *keysValuePairs
+
+	// Allocate memory for the array of KeyValuePair structs
+	cArray := C.malloc(C.size_t(len(keysValuePairsSlice)) * C.size_t(unsafe.Sizeof(C.struct_KeyValuePair{})))
+	cKeyValuePairs := (*[1 << 30]C.struct_KeyValuePair)(cArray)[:len(keysValuePairsSlice):len(keysValuePairsSlice)]
+
+	// Populate the array with key-value pairs
+	for i, kv := range keysValuePairsSlice {
+		cKeyValuePairs[i].key = C.CString(string(kv.Key))
+		cKeyValuePairs[i].value = C.CString(string(kv.Value))
+	}
+
+	return C.struct_KeyValuePairArray{pairs: (*C.struct_KeyValuePair)(cArray), numPairs: C.int(len(keysValuePairsSlice))}
+}
+
+//export new_iterator
+func new_iterator(dbPtr unsafe.Pointer) unsafe.Pointer {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	iter := k4.NewIterator(db)
+
+	iterHandle := cgo.NewHandle(iter)
+
+	return unsafe.Pointer(iterHandle)
+}
+
+//export iter_next
+func iter_next(iterPtr unsafe.Pointer) (*C.char, *C.char) {
+	iterHandle := cgo.Handle(iterPtr)
+	iter := iterHandle.Value().(*k4.Iterator)
+
+	key, value := iter.Next()
+	if key == nil {
+		return nil, nil
+	}
+
+	return C.CString(string(key)), C.CString(string(value))
+}
+
+//export iter_prev
+func iter_prev(iterPtr unsafe.Pointer) (*C.char, *C.char) {
+	iterHandle := cgo.Handle(iterPtr)
+	iter := iterHandle.Value().(*k4.Iterator)
+
+	key, value := iter.Prev()
+	if key == nil {
+		return nil, nil
+	}
+
+	return C.CString(string(key)), C.CString(string(value))
+}
+
+//export iter_reset
+func iter_reset(iterPtr unsafe.Pointer) {
+	iterHandle := cgo.Handle(iterPtr)
+	iter := iterHandle.Value().(*k4.Iterator)
+
+	iter.Reset()
+}
+
+//export iter_close
+func iter_close(iterPtr unsafe.Pointer) {
+	iterHandle := cgo.Handle(iterPtr)
+
+	iterHandle.Delete()
+}
+
 func main() {}
