@@ -1,4 +1,4 @@
-## K4 Benchmarking Utility
+## K4 Benchmarking
 These programs benchmark Put, Get, and Delete operations against RocksDB, LMDB, and K4.
 
 Their written in C and GO.
