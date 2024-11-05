@@ -354,18 +354,23 @@ func (p *Pager) FileName() string {
 	return p.file.Name()
 }
 
-// startPeriodicSync starts a goroutine to periodically sync the file
+// startPeriodicSync ticks and checks if the file needs to be synced
+// if the file is not synced from the amount of writes, we escalate the sync based on SYNC_ESCALATION
 func (p *Pager) startPeriodicSync() {
-	defer p.wg.Done()
+	defer p.wg.Done() // defer completion of the wait group
 
+	// start the periodic sync
 	p.once.Do(func() {
 
+		// start the ticker
 		ticker := time.NewTicker(SYNC_TICK_INTERVAL)
-		defer ticker.Stop()
+		defer ticker.Stop() // defer stopping the ticker
+
 		for {
 			select {
-			case <-ticker.C:
-				if p.writeCounter < WRITE_THRESHOLD {
+			case <-ticker.C: // check if the file needs to be synced
+				if p.writeCounter < WRITE_THRESHOLD { // if the amount of writes is less than the threshold
+
 					if time.Since(p.lastSync) < SYNC_ESCALATION { // check if the file is synced in SYNC_ESCALATION
 						continue
 					} // if the file is not synced in SYNC_ESCALATION, sync it
@@ -375,10 +380,10 @@ func (p *Pager) startPeriodicSync() {
 				if err != nil {
 					return
 				}
-				p.lock.Lock()
-				p.writeCounter = 0
-				p.lastSync = time.Now()
-				p.lock.Unlock()
+				p.lock.Lock()           // lock the pager
+				p.writeCounter = 0      // reset the write counter
+				p.lastSync = time.Now() // update the last sync time
+				p.lock.Unlock()         // unlock the pager
 			case <-p.stopSync:
 				return
 			}
