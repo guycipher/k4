@@ -18,6 +18,11 @@ int main() {
     // Put key-value pair
     char* key = "key1";
     char* value = "value1";
+
+    // If you want a TTL
+    // 5000000000 is 5 seconds from now for example
+    // ttl := 5 * time.Second in GO resolves to 5000000000
+
     if (db_put(db, key, strlen(key), value, strlen(value), -1) != 0) { // -1 means no ttl
         printf("Failed to put key-value pair\n");
         db_close(db);
