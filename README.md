@@ -50,6 +50,8 @@ More benchmarks coming comparing against other storage engines.
 ### C Library and FFIs
 K4 has a C library that can be used with FFIs (Foreign Function Interfaces) in other languages.  The C library is built using the Go toolchain and can be found in the c directory.
 
+[Shared C Library](https://github.com/guycipher/k4/tree/main/c)
+
 #### FFIs
 These are FFI's using the shared K4 C library.  They can be used as a building block using K4 as a storage engine in other languages.
 - [x] [Python](https://github.com/guycipher/k4/tree/main/ffi/python)
