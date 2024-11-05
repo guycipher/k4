@@ -17,7 +17,7 @@ go build -o bench bench.go && ./bench
 ```
 
 10000 operations are performed for each operation type.
-The shared C library isn't has optimized as the Go library, so the results may vary.
+The shared C library isn't as optimized as the Go library, so the results may vary.
 ```
 -- These are results from bench.c on below system --
 11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz UBuntu with WDC WDS500G2B0A-00SM50(HDD)
