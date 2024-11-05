@@ -45,7 +45,7 @@ More detailed benchmarks can be found in [here](https://github.com/guycipher/k4/
 - Background flushing and compaction operations for less blocking on read and write operations
 - Easy intuitive API(Get, Put, Delete, Range, NRange, GreaterThan, GreaterThanEq, LessThan, LessThanEq, NGet)
 - Iterator for iterating over key-value pairs in memtable and sstables with Next and Prev methods
-- Periodic pager syncing to disk.  Every 24576 writes the system will sync the pager to disk or escalate synchronization every minute.
+- Periodic pager write syncing to disk.  Every 24576 writes or every minute the system will flush the file system's in-memory copy of recently written data to disk.
 - No dependencies
 
 ### C Library and FFIs
