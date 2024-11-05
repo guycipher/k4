@@ -1,3 +1,7 @@
+/*
+* Example using K4 shared storage engine library
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,13 +71,13 @@ int main() {
 
     printf("txn committed\n");
 
-    // Define the start and end keys
+    // Define start and end keys
     char* startKey = "key1";
     int startLen = strlen(startKey);
     char* endKey = "key3";
     int endLen = strlen(endKey);
 
-    // Call the range_ function
+    // Call range_ function
     struct KeyValuePairArray result = range_(db, startKey, startLen, endKey, endLen);
     if (result.pairs == NULL) {
         printf("Failed to get range\n");

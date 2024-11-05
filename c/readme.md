@@ -86,6 +86,56 @@ void iter_close(void* iterPtr);
 
 ```
 
+#### Range example
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <libk4.h>
+
+int main() {
+    // Open database
+    void* db = db_open("data", 1024, 60, 1, 1);
+    if (db == NULL) {
+        printf("Failed to open database\n");
+        return 1;
+    }
+
+
+    // Define start and end keys
+    char* startKey = "key1";
+    int startLen = strlen(startKey);
+
+    char* endKey = "key3";
+    int endLen = strlen(endKey);
+
+    // Call range_ function
+    struct KeyValuePairArray result = range_(db, startKey, startLen, endKey, endLen);
+    if (result.pairs == NULL) {
+        printf("Failed to get range\n");
+        db_close(db);
+        return 1;
+    }
+
+    // Process result
+    for (int i = 0; i < result.numPairs; i++) {
+        printf("Key: %s, Value: %s\n", result.pairs[i].key, result.pairs[i].value);
+        free(result.pairs[i].key);
+        free(result.pairs[i].value);
+    }
+
+    // Free the allocated memory for the result array
+    free(result.pairs);
+
+    // Close database
+    if (db_close(db) != 0) {
+        printf("Failed to close database\n");
+        return 1;
+    }
+
+    return 0;
+```
+
 #### Iterator example
 ```c
 #include <stdio.h>
