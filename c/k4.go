@@ -82,7 +82,9 @@ func db_close(dbPtr unsafe.Pointer) C.int {
 
 //export db_put
 func db_put(dbPtr unsafe.Pointer, key *C.char, keyLen C.int, value *C.char, valueLen C.int, ttl C.int64_t) C.int {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	valueBytes := C.GoBytes(unsafe.Pointer(value), valueLen)
 
@@ -104,7 +106,9 @@ func db_put(dbPtr unsafe.Pointer, key *C.char, keyLen C.int, value *C.char, valu
 
 //export db_get
 func db_get(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) *C.char {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	value, err := db.Get(keyBytes)
 	if err != nil {
@@ -115,7 +119,9 @@ func db_get(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) *C.char {
 
 //export db_delete
 func db_delete(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) C.int {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	err := db.Delete(keyBytes)
 	if err != nil {
@@ -126,14 +132,21 @@ func db_delete(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) C.int {
 
 //export begin_transaction
 func begin_transaction(dbPtr unsafe.Pointer) unsafe.Pointer {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	tx := db.BeginTransaction()
-	return unsafe.Pointer(tx)
+
+	txnHandle := cgo.NewHandle(tx)
+
+	return unsafe.Pointer(txnHandle)
 }
 
 //export add_operation
 func add_operation(txPtr unsafe.Pointer, operation C.int, key *C.char, keyLen C.int, value *C.char, valueLen C.int) C.int {
-	txn := (*k4.Transaction)(txPtr)
+	txnHandle := cgo.Handle(txPtr)
+	txn := txnHandle.Value().(*k4.Transaction)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	valueBytes := C.GoBytes(unsafe.Pointer(value), valueLen)
 
@@ -144,16 +157,26 @@ func add_operation(txPtr unsafe.Pointer, operation C.int, key *C.char, keyLen C.
 
 //export remove_transaction
 func remove_transaction(dbPtr unsafe.Pointer, txPtr unsafe.Pointer) {
-	db := (*k4.K4)(dbPtr)
-	txn := (*k4.Transaction)(txPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	txnHandle := cgo.Handle(txPtr)
+	txn := txnHandle.Value().(*k4.Transaction)
+
 	txn.Remove(db)
+
+	txnHandle.Delete()
 
 }
 
 //export commit_transaction
 func commit_transaction(txPtr unsafe.Pointer, dbPtr unsafe.Pointer) C.int {
-	txn := (*k4.Transaction)(txPtr)
-	db := (*k4.K4)(dbPtr)
+	txnHandle := cgo.Handle(txPtr)
+	txn := txnHandle.Value().(*k4.Transaction)
+
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	err := txn.Commit(db)
 	if err != nil {
 		return -1
@@ -163,8 +186,12 @@ func commit_transaction(txPtr unsafe.Pointer, dbPtr unsafe.Pointer) C.int {
 
 //export rollback_transaction
 func rollback_transaction(txPtr unsafe.Pointer, dbPtr unsafe.Pointer) C.int {
-	txn := (*k4.Transaction)(txPtr)
-	db := (*k4.K4)(dbPtr)
+	txnHandle := cgo.Handle(txPtr)
+	txn := txnHandle.Value().(*k4.Transaction)
+
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	err := txn.Rollback(db)
 	if err != nil {
 		return -1
@@ -174,7 +201,9 @@ func rollback_transaction(txPtr unsafe.Pointer, dbPtr unsafe.Pointer) C.int {
 
 //export recover_from_wal
 func recover_from_wal(dbPtr unsafe.Pointer) C.int {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	err := db.RecoverFromWAL()
 	if err != nil {
 		return -1
@@ -184,7 +213,9 @@ func recover_from_wal(dbPtr unsafe.Pointer) C.int {
 
 //export greater_than
 func greater_than(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C.char) {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	keysValuePairs, err := db.GreaterThan(keyBytes)
 	if err != nil {
@@ -206,7 +237,9 @@ func greater_than(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, [
 
 //export less_than
 func less_than(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C.char) {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	keysValuePairs, err := db.LessThan(keyBytes)
 	if err != nil {
@@ -227,7 +260,9 @@ func less_than(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C
 
 //export nget
 func nget(dbPtr unsafe.Pointer, key *C.char, keyLen C.int, n C.int) ([]*C.char, []*C.char) {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	keysValuePairs, err := db.NGet(keyBytes)
 	if err != nil {
@@ -248,7 +283,9 @@ func nget(dbPtr unsafe.Pointer, key *C.char, keyLen C.int, n C.int) ([]*C.char, 
 
 //export greater_than_eq
 func greater_than_eq(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C.char) {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	keysValuePairs, err := db.GreaterThanEq(keyBytes)
 	if err != nil {
@@ -269,7 +306,9 @@ func greater_than_eq(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char
 
 //export less_than_eq
 func less_than_eq(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, []*C.char) {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	keyBytes := C.GoBytes(unsafe.Pointer(key), keyLen)
 	keysValuePairs, err := db.LessThanEq(keyBytes)
 	if err != nil {
@@ -290,7 +329,9 @@ func less_than_eq(dbPtr unsafe.Pointer, key *C.char, keyLen C.int) ([]*C.char, [
 
 //export range_
 func range_(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, endLen C.int) ([]*C.char, []*C.char) {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	startBytes := C.GoBytes(unsafe.Pointer(start), startLen)
 	endBytes := C.GoBytes(unsafe.Pointer(end), endLen)
 	keysValuePairs, err := db.Range(startBytes, endBytes)
@@ -312,7 +353,9 @@ func range_(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, en
 
 //export nrange
 func nrange(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, endLen C.int, n C.int) ([]*C.char, []*C.char) {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	startBytes := C.GoBytes(unsafe.Pointer(start), startLen)
 	endBytes := C.GoBytes(unsafe.Pointer(end), endLen)
 	keysValuePairs, err := db.NRange(startBytes, endBytes)
@@ -334,14 +377,21 @@ func nrange(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, en
 
 //export new_iterator
 func new_iterator(dbPtr unsafe.Pointer) unsafe.Pointer {
-	db := (*k4.K4)(dbPtr)
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
 	iter := k4.NewIterator(db)
-	return unsafe.Pointer(iter)
+
+	iterHandle := cgo.NewHandle(iter)
+
+	return unsafe.Pointer(iterHandle)
 }
 
 //export iter_next
 func iter_next(iterPtr unsafe.Pointer) (*C.char, *C.char) {
-	iter := (*k4.Iterator)(iterPtr)
+	iterHandle := cgo.Handle(iterPtr)
+	iter := iterHandle.Value().(*k4.Iterator)
+
 	key, value := iter.Next()
 	if key == nil {
 		return nil, nil
@@ -352,7 +402,9 @@ func iter_next(iterPtr unsafe.Pointer) (*C.char, *C.char) {
 
 //export iter_prev
 func iter_prev(iterPtr unsafe.Pointer) (*C.char, *C.char) {
-	iter := (*k4.Iterator)(iterPtr)
+	iterHandle := cgo.Handle(iterPtr)
+	iter := iterHandle.Value().(*k4.Iterator)
+
 	key, value := iter.Prev()
 	if key == nil {
 		return nil, nil
@@ -363,8 +415,17 @@ func iter_prev(iterPtr unsafe.Pointer) (*C.char, *C.char) {
 
 //export iter_reset
 func iter_reset(iterPtr unsafe.Pointer) {
-	iter := (*k4.Iterator)(iterPtr)
+	iterHandle := cgo.Handle(iterPtr)
+	iter := iterHandle.Value().(*k4.Iterator)
+
 	iter.Reset()
+}
+
+//export iter_close
+func iter_close(iterPtr unsafe.Pointer) {
+	iterHandle := cgo.Handle(iterPtr)
+
+	iterHandle.Delete()
 }
 
 func main() {}
