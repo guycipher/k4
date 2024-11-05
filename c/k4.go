@@ -248,4 +248,32 @@ func range_(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, en
 	return C.struct_KeyValuePairArray{pairs: (*C.struct_KeyValuePair)(cArray), numPairs: C.int(len(keysValuePairsSlice))}
 }
 
+//export nrange
+func nrange(dbPtr unsafe.Pointer, start *C.char, startLen C.int, end *C.char, endLen C.int) C.struct_KeyValuePairArray {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	startBytes := C.GoBytes(unsafe.Pointer(start), startLen)
+	endBytes := C.GoBytes(unsafe.Pointer(end), endLen)
+	keysValuePairs, err := db.NRange(startBytes, endBytes)
+	if err != nil {
+		return C.struct_KeyValuePairArray{pairs: nil, numPairs: 0}
+	}
+
+	// Convert keysValuePairs from *k4.KeyValueArray to a slice
+	keysValuePairsSlice := *keysValuePairs
+
+	// Allocate memory for the array of KeyValuePair structs
+	cArray := C.malloc(C.size_t(len(keysValuePairsSlice)) * C.size_t(unsafe.Sizeof(C.struct_KeyValuePair{})))
+	cKeyValuePairs := (*[1 << 30]C.struct_KeyValuePair)(cArray)[:len(keysValuePairsSlice):len(keysValuePairsSlice)]
+
+	// Populate the array with key-value pairs
+	for i, kv := range keysValuePairsSlice {
+		cKeyValuePairs[i].key = C.CString(string(kv.Key))
+		cKeyValuePairs[i].value = C.CString(string(kv.Value))
+	}
+
+	return C.struct_KeyValuePairArray{pairs: (*C.struct_KeyValuePair)(cArray), numPairs: C.int(len(keysValuePairsSlice))}
+}
+
 func main() {}
