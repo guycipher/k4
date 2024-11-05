@@ -48,12 +48,14 @@ int main() {
     // Add operation to transaction
     char* key2 = "key2";
     char* value2 = "value2";
-    if (add_operation(txn, 1, key2, strlen(key2), value2, strlen(value2)) != 0) {
+    if (add_operation(txn, 0, key2, strlen(key2), value2, strlen(value2)) != 0) {
         printf("Failed to add operation to transaction\n");
         rollback_transaction(txn, db);
         db_close(db);
         return 1;
     }
+
+    printf("commiting txn\n");
 
     // Commit transaction
     if (commit_transaction(txn, db) != 0) {
@@ -63,21 +65,31 @@ int main() {
         return 1;
     }
 
-    // Range query
-    struct range__return range_result = range_(db, "key0", strlen("key0"), "key3", strlen("key3"));
-    for (int i = 0; i < range_result.r0.len; i++) {
-        printf("Range key: %s, value: %s\n", ((char**)range_result.r0.data)[i], ((char**)range_result.r1.data)[i]);
+    printf("txn committed\n");
+
+    // Define the start and end keys
+    char* startKey = "key1";
+    int startLen = strlen(startKey);
+    char* endKey = "key3";
+    int endLen = strlen(endKey);
+
+    // Call the range_ function
+    struct KeyValuePairArray result = range_(db, startKey, startLen, endKey, endLen);
+    if (result.pairs == NULL) {
+        printf("Failed to get range\n");
+        db_close(db);
+        return 1;
     }
 
-    // Iterator
-//    void* iter = new_iterator(db);
-//    struct iter_next_return iter_result;
-//    while ((iter_result = iter_next(iter)).r0 != NULL) {
-//        printf("Iterator key: %s, value: %s\n", iter_result.r0, iter_result.r1);
-//        free(iter_result.r0);
-//        free(iter_result.r1);
-//    }
-//    iter_reset(iter);
+    // Process the result
+    for (int i = 0; i < result.numPairs; i++) {
+        printf("Key: %s, Value: %s\n", result.pairs[i].key, result.pairs[i].value);
+        free(result.pairs[i].key);
+        free(result.pairs[i].value);
+    }
+
+    // Free the allocated memory for the result array
+    free(result.pairs);
 
     // Close database
     if (db_close(db) != 0) {
