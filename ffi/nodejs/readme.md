@@ -1,4 +1,5 @@
 # K4 Node.JS FFI
+This is an example library that demonstrates how to use a K4 FFI in Node.JS using the shared K4 C library.
 
 ## Examples
 ```javascript

@@ -51,24 +51,13 @@ More benchmarks coming comparing against other storage engines.
 K4 has a C library that can be used with FFIs (Foreign Function Interfaces) in other languages.  The C library is built using the Go toolchain and can be found in the c directory.
 
 #### FFIs
-- [ ] [Python]()
-- [ ] [Ruby]()
-- [ ] [Lua]()
-- [ ] [Java]()
-- [ ] [Rust]()
-- [ ] [Haskell]()
-- [ ] [Perl]()
-- [ ] [C#]()
-- [ ] [Scala]()
-- [ ] [D]()
-- [ ] [Swift]()
-- [ ] [Kotlin]()
-- [ ] [Elixir]()
-- [ ] [OCaml]()
-- [ ] [PHP]()
-- [ ] [F#]()
-- [ ] [Ada]()
-- [ ] [R]()
+These are FFI's using the shared K4 C library.  They can be used as a building block using K4 as a storage engine in other languages.
+- [x] [Python](https://github.com/guycipher/k4/tree/main/ffi/python)
+- [x] [Ruby](https://github.com/guycipher/k4/tree/main/ffi/ruby)
+- [x] [Lua](https://github.com/guycipher/k4/tree/main/ffi/lua)
+- [x] [Java](https://github.com/guycipher/k4/tree/main/ffi/java)
+- [x] [Rust](https://github.com/guycipher/k4/tree/main/ffi/rust)
+- [x] [C#](https://github.com/guycipher/k4/tree/main/ffi/csharp)
 - [x] [Node.JS](https://github.com/guycipher/k4/tree/main/ffi/nodejs)
 
 
