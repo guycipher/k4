@@ -36,6 +36,7 @@ package main
 import "C"
 import (
 	"github.com/guycipher/k4"
+	"runtime/cgo"
 	"time"
 	"unsafe"
 )
@@ -55,20 +56,26 @@ func db_open(directory *C.char, memtableFlushThreshold C.int, compactionInterval
 		return nil
 	}
 
-	// @todo fix panic: runtime error: cgo result is unpinned Go pointer or points to unpinned Go pointer
+	// The handle is valid until the program calls Delete on it.
+	// The handle uses resources, and this package assumes that C code may hold on to the handle,
+	// so a program must explicitly call Delete when the handle is no longer needed.
+	handle := cgo.NewHandle(db)
 
-	return unsafe.Pointer(db)
+	return unsafe.Pointer(handle)
 }
 
 //export db_close
 func db_close(dbPtr unsafe.Pointer) C.int {
-	db := (*k4.K4)(dbPtr)
+
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
 	err := db.Close()
 	if err != nil {
 		return -1
 	}
 
-	C.free(unsafe.Pointer(dbPtr))
+	// Delete invalidates a handle. The handle is no longer valid after calling Delete.
+	handle.Delete()
 
 	return 0
 }
