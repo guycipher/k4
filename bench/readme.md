@@ -16,7 +16,7 @@ gcc -o bench bench.c -lrocksdb -llmdb -lk4 && ./bench
 go build -o bench bench.go && ./bench
 ```
 
-1 million operations are performed for each operation type.
+10000 operations are performed for each operation type.
 The shared C library isn't has optimized as the Go library, so the results may vary.
 ```
 -- These are results from bench.c on below system --
