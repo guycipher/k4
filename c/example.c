@@ -18,7 +18,7 @@ int main() {
     // Put key-value pair
     char* key = "key1";
     char* value = "value1";
-    if (db_put(db, key, strlen(key), value, strlen(value), -1) != 0) {
+    if (db_put(db, key, strlen(key), value, strlen(value), -1) != 0) { // -1 means no ttl
         printf("Failed to put key-value pair\n");
         db_close(db);
         return 1;
@@ -52,6 +52,8 @@ int main() {
     // Add operation to transaction
     char* key2 = "key2";
     char* value2 = "value2";
+    // 0 means put operation
+    // 1 means delete operation
     if (add_operation(txn, 0, key2, strlen(key2), value2, strlen(value2)) != 0) {
         printf("Failed to add operation to transaction\n");
         rollback_transaction(txn, db);
