@@ -34,3 +34,5 @@ c/libk4.so
 c/k4.h.gch
 c/example
 e/example.exe
+bench/bench
+bench/bench.exe
