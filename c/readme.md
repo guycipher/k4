@@ -1,6 +1,16 @@
 ## C library for K4
 
 Building C library
+To build the K4 shared C library you require the latest version of Go installed on your system.
+
+You can get the latest version of Go lang from here https://go.dev/dl/
+
+Once you have Go installed you can continue.
+```
+cd c
+```
+
+Make sure you're in k4/c directory and run the following command to build the shared library.
 ```
 go build -o libk4.so -buildmode=c-shared k4.go
 ```
@@ -28,7 +38,7 @@ On unix update the library cache
 sudo ldconfig
 ```
 
-Verify install
+Verify install (unix)
 ```
 ldconfig -p | grep libk4
 ```
@@ -38,7 +48,12 @@ Should see
 libk4.so (libc6,x86-64) => /usr/local/lib/libk4.so
 ```
 
-Now you should be able to compile example
+Now you should include the library in your C code
+```c
+#include <libk4.h>
+```
+
+Example compile command
 ```
 cc -o example example.c -L/usr/local/lib -lk4 -I/usr/local/include
 ```
