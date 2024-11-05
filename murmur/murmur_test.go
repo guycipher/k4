@@ -48,7 +48,7 @@ func TestHash64(t *testing.T) {
 		{[]byte("world"), 0, 0x96a5312ceeb4b275},
 		{[]byte("murmur"), 0, 0xc40377c960d8b391},
 		{[]byte("hash"), 0, 0xe7fcedc45a9406da},
-	}
+	} // Can fail on different machines
 
 	for _, tt := range tests {
 		t.Run(string(tt.key), func(t *testing.T) {
