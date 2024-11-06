@@ -52,7 +52,7 @@ const WAL_EXTENSION = ".wal"                     // The write ahead log file ext
 const TOMBSTONE_VALUE = "$tombstone"             // The tombstone value
 const COMPRESSION_WINDOW_SIZE = 1024 * 32        // The compression window size
 const BACKGROUND_OP_SLEEP = 5 * time.Microsecond // The background sleep time for the background operations
-const SSTABLE_DEGREE = 16                        // The degree of the B+ tree in the SSTable
+const SSTABLE_DEGREE = 16                        // The degree of the SSTable B*+ tree's
 
 // K4 is the main structure for the k4 database
 type K4 struct {
@@ -207,7 +207,7 @@ func Open(directory string, memtableFlushThreshold int, compactionInterval int, 
 	k4.memtable = skiplist.NewSkipList(k4.memtableMaxLevel, k4.memtableP) // Set the memtable
 
 	// Load SSTables
-	// We open sstable files in the configured directory
+	// We open sstable files/bspt's in the configured directory
 	k4.loadSSTables()
 
 	// If logging is set we will open a logging file, so we can write to it
@@ -277,7 +277,7 @@ func (k4 *K4) Close() error {
 
 	// Close SSTables
 	for _, sstable := range k4.sstables {
-		err := sstable.bspt.Close()
+		err := sstable.bspt.Close() // Close up the sstable
 		if err != nil {
 			return err
 		}
@@ -403,6 +403,7 @@ func deserializeOp(data []byte) (OPR_CODE, []byte, []byte, error) {
 }
 
 // serializeKv serializes a key-value pair
+// @deprecated
 func serializeKv(key, value []byte, ttl *time.Time) []byte {
 	var buf bytes.Buffer // create a buffer
 
@@ -425,6 +426,7 @@ func serializeKv(key, value []byte, ttl *time.Time) []byte {
 }
 
 // deserializeKv deserializes a key-value pair
+// @deprecated
 func deserializeKv(data []byte) (key, value []byte, ttl *time.Time, err error) {
 	kv := KV{} // The key value pair to be deserialized
 
