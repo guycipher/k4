@@ -403,7 +403,7 @@ func deserializeOp(data []byte) (OPR_CODE, []byte, []byte, error) {
 }
 
 // serializeKv serializes a key-value pair
-// @deprecated
+// @depreciated
 func serializeKv(key, value []byte, ttl *time.Time) []byte {
 	var buf bytes.Buffer // create a buffer
 
@@ -426,7 +426,7 @@ func serializeKv(key, value []byte, ttl *time.Time) []byte {
 }
 
 // deserializeKv deserializes a key-value pair
-// @deprecated
+// @depreciated
 func deserializeKv(data []byte) (key, value []byte, ttl *time.Time, err error) {
 	kv := KV{} // The key value pair to be deserialized
 
