@@ -71,7 +71,7 @@ type Node struct {
 // KeyIterator is an iterator for the values of a key
 type KeyIterator struct {
 	index int            // current index
-	key   *Key           // the key
+	Key   *Key           // the Key
 	bspt  *BStarPlusTree // the bstarplustree
 }
 
@@ -535,7 +535,7 @@ func (bspt *BStarPlusTree) printTree(node *Node, indent string, last bool) error
 
 // HasNext returns true if there are more values in the key
 func (it *KeyIterator) HasNext() bool {
-	return it.index < len(it.key.V)
+	return it.index < len(it.Key.V)
 }
 
 // Next returns the next value in the key
@@ -544,7 +544,7 @@ func (it *KeyIterator) Next() ([]byte, error) {
 		return nil, errors.New("no more values")
 	}
 
-	valuePage := it.key.V[it.index]
+	valuePage := it.Key.V[it.index]
 
 	// read the value from the page
 	valueBytes, err := it.bspt.Pager.GetPage(valuePage)
@@ -612,7 +612,7 @@ func (bspt *BStarPlusTree) writeNode(n *Node) error {
 func NewKeyIterator(key *Key, bspt *BStarPlusTree) *KeyIterator {
 	return &KeyIterator{
 		index: 0,
-		key:   key,
+		Key:   key,
 		bspt:  bspt,
 	}
 }

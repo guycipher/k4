@@ -530,7 +530,6 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 
 		// Check for compression
 		if k4.compress {
-
 			key, value, err = compressKeyValue(key, value) // compress key and value
 			if err != nil {
 				return err
@@ -545,12 +544,18 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 
 			hs.Add(key) // add key to hash set
 
-			sstable.bspt.Put(key, value, &expirationTime)
+			err := sstable.bspt.Put(key, value, &expirationTime)
+			if err != nil {
+				return err
+			}
 
 		} else {
 			hs.Add(key) // add key to hash set
 
-			sstable.bspt.Put(key, value, nil)
+			err := sstable.bspt.Put(key, value, nil)
+			if err != nil {
+				return err
+			}
 
 		}
 
@@ -1136,6 +1141,8 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 		}
 	}
 
+	fmt.Println("not found")
+
 	return nil, nil
 }
 
@@ -1166,44 +1173,37 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 
 	//Check if the key exists in the hashset
 	if !hs.Contains(key) {
-		fmt.Println("does not contain key")
 		return nil, nil
 	}
 
-	fmt.Println("possibly contains key")
-
-	// Iterate over SSTable
-	it, err := bstarplustree.NewInOrderIterator(sstable.bspt)
-	for it.HasNext() {
-		k, err := it.Next()
-		if err != nil {
-			return nil, err
-		}
-
-		if bytes.Equal(k.K, key) {
-			// check ttl
-			if k.TTL != nil {
-				if time.Now().After(*k.TTL) {
-					return nil, nil
-				}
-			}
-
-			keyIter := bstarplustree.NewKeyIterator(k, sstable.bspt)
-
-			for keyIter.HasNext() {
-				// we just get first value
-				value, err := keyIter.Next()
-				if err != nil {
-					break
-				}
-
-				return value, nil
-
-			}
-		}
+	k, err := sstable.bspt.Get(key)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, nil
+	if k.Key.TTL != nil {
+		if time.Now().After(*k.Key.TTL) {
+			return nil, nil
+		}
+
+	}
+
+	value, err := k.Next()
+	if err != nil {
+		return nil, err
+
+	}
+
+	if value == nil {
+		return nil, nil
+
+	}
+
+	if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+		return nil, nil
+	}
+
+	return value, nil
 }
 
 // Put puts a key-value pair into K4
