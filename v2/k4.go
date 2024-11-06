@@ -38,6 +38,7 @@ import (
 	"github.com/guycipher/k4/hashset"
 	"github.com/guycipher/k4/pager"
 	"github.com/guycipher/k4/skiplist"
+	"github.com/guycipher/k4/v2/bstarplustree"
 	"log"
 	"os"
 	"sort"
@@ -51,6 +52,7 @@ const WAL_EXTENSION = ".wal"                     // The write ahead log file ext
 const TOMBSTONE_VALUE = "$tombstone"             // The tombstone value
 const COMPRESSION_WINDOW_SIZE = 1024 * 32        // The compression window size
 const BACKGROUND_OP_SLEEP = 5 * time.Microsecond // The background sleep time for the background operations
+const SSTABLE_DEGREE = 16                        // The degree of the B+ tree in the SSTable
 
 // K4 is the main structure for the k4 database
 type K4 struct {
@@ -80,9 +82,9 @@ type K4 struct {
 
 // SSTable is the structure for the SSTable files
 type SSTable struct {
-	pager      *pager.Pager  // the pager for the sstable file
-	lock       *sync.RWMutex // read write lock for the sstable
-	compressed bool          // whether the sstable is compressed; this gets set when the sstable is created, the configuration is passed from K4
+	bspt       *bstarplustree.BStarPlusTree // the bstarplustree for the sstable
+	lock       *sync.RWMutex                // read write lock for the sstable
+	compressed bool                         // whether the sstable is compressed; this gets set when the sstable is created, the configuration is passed from K4
 }
 
 // Transaction is the structure for the transactions
@@ -110,10 +112,8 @@ const (
 
 // SSTableIterator is the structure for the SSTable iterator
 type SSTableIterator struct {
-	pager       *pager.Pager // the pager for the sstable file
-	currentPage int          // the current page
-	lastPage    int          // the last page in the sstable
-	compressed  bool         // whether the sstable is compressed
+	bspt       *bstarplustree.BStarPlusTree // the bstarplustree for the sstable
+	compressed bool                         // whether the sstable is compressed
 }
 
 // WALIterator is the structure for the WAL iterator
@@ -283,7 +283,7 @@ func (k4 *K4) Close() error {
 
 	// Close SSTables
 	for _, sstable := range k4.sstables {
-		err := sstable.pager.Close()
+		err := sstable.bspt.Close()
 		if err != nil {
 			return err
 		}
@@ -476,7 +476,7 @@ func (k4 *K4) loadSSTables() {
 
 	// Open and append SSTables
 	for _, file := range sstableFiles {
-		sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+file.Name(), os.O_RDWR, 0644)
+		sstableBPST, err := bstarplustree.Open(k4.directory+string(os.PathSeparator)+file.Name(), os.O_RDWR, 0644, SSTABLE_DEGREE, k4.compress)
 		if err != nil {
 			// could possibly handle this better
 			k4.printLog(fmt.Sprintf("Failed to open sstable: %v", err))
@@ -484,7 +484,7 @@ func (k4 *K4) loadSSTables() {
 		}
 
 		k4.sstables = append(k4.sstables, &SSTable{
-			pager:      sstablePager,
+			bspt:       sstableBPST,
 			lock:       &sync.RWMutex{},
 			compressed: k4.compress,
 		}) // append the sstable to the list of sstables
@@ -548,12 +548,6 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		return err
 	}
 
-	// Write the hashset to the intitial pages of SSTable
-	_, err = sstable.pager.Write(hsData)
-	if err != nil {
-		return err
-	}
-
 	// We create another iterator to write the key value pairs to the sstable
 	it = skiplist.NewIterator(memtable)
 
@@ -572,23 +566,25 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 			}
 		}
 
-		// Serialize key-value pair
-		var data []byte
-
 		if ttl != nil {
-			expiry := time.Now().Add(*ttl)
-			data = serializeKv(key, value, &expiry)
+			expirationTime := time.Now().Add(*ttl)
+			if time.Now().After(expirationTime) { // if the key has expired we skip it
+				continue
+			}
+
+			sstable.bspt.Put(key, value, &expirationTime)
+
 		} else {
+			sstable.bspt.Put(key, value, nil)
 
-			data = serializeKv(key, value, nil)
 		}
 
-		// Write to SSTable
-		_, err := sstable.pager.Write(data)
-		if err != nil {
-			return err
-		}
+	}
 
+	// Write the hashset to the last page of the sstable
+	_, err = sstable.bspt.Pager.Write(hsData)
+	if err != nil {
+		return err
 	}
 
 	// We only lock sstables array when we are appending a new sstable
@@ -610,14 +606,14 @@ func (k4 *K4) createSSTable() (*SSTable, error) {
 	defer k4.sstablesLock.RUnlock() // unlock on defer
 
 	// Create SSTable file
-	sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644)
+	sstableBSPT, err := bstarplustree.Open(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644, SSTABLE_DEGREE, k4.compress)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create SSTable
 	return &SSTable{
-		pager:      sstablePager,
+		bspt:       sstableBSPT,
 		lock:       &sync.RWMutex{},
 		compressed: k4.compress,
 	}, nil
@@ -628,14 +624,14 @@ func (k4 *K4) createSSTable() (*SSTable, error) {
 func (k4 *K4) createSSTableNoLock() (*SSTable, error) {
 
 	// Create SSTable file
-	sstablePager, err := pager.OpenPager(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644)
+	sstableBSPT, err := bstarplustree.Open(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644, SSTABLE_DEGREE, k4.compress)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create SSTable
 	return &SSTable{
-		pager:      sstablePager,
+		bspt:       sstableBSPT,
 		lock:       &sync.RWMutex{},
 		compressed: k4.compress,
 	}, nil
@@ -644,106 +640,6 @@ func (k4 *K4) createSSTableNoLock() (*SSTable, error) {
 // sstableFilename returns the filename for an SSTable
 func sstableFilename(index int) string {
 	return "sstable_" + fmt.Sprintf("%d", index) + SSTABLE_EXTENSION
-}
-
-// newSSTableIterator creates a new SSTable iterator
-func newSSTableIterator(pager *pager.Pager, compressed bool) *SSTableIterator {
-	return &SSTableIterator{
-		pager:       pager,                  // the pager for the sstable file
-		currentPage: 0,                      // skip the first page which is the hashset
-		lastPage:    int(pager.Count() - 1), // the last page in the sstable
-		compressed:  compressed,             // whether the sstable is compressed
-	}
-}
-
-// next returns true if there is another key-value pair in the SSTable
-func (it *SSTableIterator) next() bool {
-	// We check if the current page is greater than the last page
-	// if so we return false
-	if it.currentPage > it.lastPage {
-		return false
-	}
-
-	it.currentPage++ // increment the current page
-	return true
-}
-
-// current returns the current key-value pair in the SSTable
-func (it *SSTableIterator) current() ([]byte, []byte, *time.Time) {
-	// Get the current page
-	data, err := it.pager.GetPage(int64(it.currentPage))
-	if err != nil {
-		return nil, nil, nil
-	}
-
-	// Deserialize key-value pair
-	key, value, ttl, err := deserializeKv(data)
-	if err != nil {
-
-		return nil, nil, ttl
-	}
-
-	// Check if key value has TTL set, if so we check if it has expired
-	if ttl != nil {
-		if time.Now().After(*ttl) {
-			// skip and go to next
-			if it.next() {
-				return it.current()
-			} else {
-				return nil, nil, nil
-			}
-		}
-	}
-
-	// Check for compression
-	if it.compressed {
-		// If so we decompress the key and value
-		key, value, err = decompressKeyValue(key, value)
-		if err != nil {
-			return nil, nil, nil
-		}
-	}
-
-	return key, value, ttl
-}
-
-// currentKey returns the current key in the SSTable
-func (it *SSTableIterator) currentKey() []byte {
-	// Get the current page
-	data, err := it.pager.GetPage(int64(it.currentPage))
-	if err != nil {
-		return nil
-	}
-
-	// Deserialize key-value pair
-	key, value, _, err := deserializeKv(data)
-	if err != nil {
-		return nil
-	}
-
-	// Check for compression
-	if it.compressed {
-		// If so we decompress the key
-		key, _, err = decompressKeyValue(key, value)
-		if err != nil {
-			return nil
-		}
-
-	}
-
-	return key
-}
-
-// prev returns true if there is a previous key-value pair in the SSTable
-func (it *SSTableIterator) prev() bool {
-	// We check if the current page is less than 0
-	// if so we return false
-	if it.currentPage < 0 {
-		return false
-	}
-
-	it.currentPage-- // decrement the current page
-	return true
 }
 
 // newWALIterator creates a new WAL iterator
@@ -829,19 +725,63 @@ func (k4 *K4) compact() error {
 			sstable2 := k4.sstables[i+1]
 
 			// create a new iterator for sstable1
-			it := newSSTableIterator(sstable1.pager, k4.compress)
-			for it.next() {
-				// iterate over the keys in sstable1 and add them to the hashset
-				key := it.currentKey()
-				hs.Add(key)
+			it, err := bstarplustree.NewInOrderIterator(sstable1.bspt)
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to create iterator for SSTable1: %v", err))
+				return
 			}
 
-			// create a new iterator for sstable2
-			it = newSSTableIterator(sstable2.pager, k4.compress)
-			for it.next() {
-				// iterate over the keys in sstable2 and add them to the hashset
-				key := it.currentKey()
-				hs.Add(key)
+			// iterate over the keys in sstable1 and add them to the hashset
+			for it.HasNext() {
+				key, err := it.Next()
+				if err != nil {
+					k4.printLog(fmt.Sprintf("Failed to iterate over SSTable1: %v", err))
+					return
+				}
+				hs.Add(key.K)
+
+				keyIter := bstarplustree.NewKeyIterator(key, sstable2.bspt)
+
+				for keyIter.HasNext() {
+					// we just get first value
+					value, err := keyIter.Next()
+					if err != nil {
+						break
+					}
+
+					newSstable.bspt.Put(key.K, value, key.TTL)
+					break
+				}
+
+			}
+
+			it2, err := bstarplustree.NewInOrderIterator(sstable2.bspt)
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to create iterator for SSTable2: %v", err))
+				return
+			}
+
+			// iterate over the keys in sstable1 and add them to the hashset
+			for it2.HasNext() {
+				key, err := it2.Next()
+				if err != nil {
+					k4.printLog(fmt.Sprintf("Failed to iterate over SSTable2: %v", err))
+					return
+				}
+				hs.Add(key.K)
+
+				keyIter := bstarplustree.NewKeyIterator(key, sstable2.bspt)
+
+				for keyIter.HasNext() {
+					// we just get first value
+					value, err := keyIter.Next()
+					if err != nil {
+						break
+					}
+
+					newSstable.bspt.Put(key.K, value, key.TTL)
+					break
+				}
 			}
 
 			// serialize the hashset
@@ -851,73 +791,23 @@ func (k4 *K4) compact() error {
 				return
 			}
 
-			// wrote hashset to initial sstable pages
-			_, err = newSstable.pager.Write(hsData)
-			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to write hashset to SSTable: %v", err))
-				return
-			}
-
-			// create a new iterator for sstable1 to add entries to the new sstable
-			it = newSSTableIterator(sstable1.pager, k4.compress)
-			for it.next() {
-				key, value, ttl := it.current()
-				if ttl != nil && time.Now().After(*ttl) { // if the key has expired we skip it
-					continue
-				}
-
-				// Check for compression
-				if k4.compress {
-					key, value, err = compressKeyValue(key, value) // compress key and value
-					if err != nil {
-						k4.printLog(fmt.Sprintf("Failed to compress key-value: %v", err))
-						return
-					}
-				}
-
-				data := serializeKv(key, value, ttl)
-				_, err := newSstable.pager.Write(data)
-				if err != nil {
-					k4.printLog(fmt.Sprintf("Failed to write key-value to SSTable: %v", err))
-					return
-				}
-			}
-
-			// create a new iterator for sstable2 to add entries to the new sstable
-			it = newSSTableIterator(sstable2.pager, k4.compress)
-			for it.next() {
-				key, value, ttl := it.current()
-				if ttl != nil && time.Now().After(*ttl) { // if the key has expired we skip it
-					continue
-				}
-
-				// Check for compression
-				if k4.compress {
-					key, value, err = compressKeyValue(key, value) // compress key and value
-					if err != nil {
-						k4.printLog(fmt.Sprintf("Failed to compress key-value: %v", err))
-						return
-					}
-				}
-
-				data := serializeKv(key, value, ttl)   // serialize key-value pair
-				_, err := newSstable.pager.Write(data) // write to new sstable
-				if err != nil {
-					k4.printLog(fmt.Sprintf("Failed to write key-value to SSTable: %v", err))
-					return
-				}
-			}
-
 			// close sstable1 and sstable2
-			err = sstable1.pager.Close()
+			err = sstable1.bspt.Close()
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to close SSTable1: %v", err))
 				return
 			}
 
-			err = sstable2.pager.Close()
+			err = sstable2.bspt.Close()
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to close SSTable2: %v", err))
+				return
+			}
+
+			// write hashset to end sstable
+			_, err = newSstable.bspt.Pager.Write(hsData)
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to write hashset to SSTable: %v", err))
 				return
 			}
 
@@ -1270,8 +1160,10 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 func (sstable *SSTable) get(key []byte) ([]byte, error) {
 	// SStable pages are locked on read so no need to lock general sstable
 
+	lastPage := int(sstable.bspt.Pager.Count() - 1)
+
 	// Read the hashset
-	hsData, err := sstable.pager.GetPage(0)
+	hsData, err := sstable.bspt.Pager.GetPage(int64(lastPage))
 	if err != nil {
 		return nil, err
 	}
@@ -1287,18 +1179,32 @@ func (sstable *SSTable) get(key []byte) ([]byte, error) {
 	}
 
 	// Iterate over SSTable
-	it := newSSTableIterator(sstable.pager, sstable.compressed)
-	for it.next() {
-		k, v, ttl := it.current()
-		if bytes.Equal(k, key) {
+	it, err := bstarplustree.NewInOrderIterator(sstable.bspt)
+	for it.HasNext() {
+		k, err := it.Next()
+		if err != nil {
+			return nil, err
+		}
+		if bytes.Equal(k.K, key) {
 			// check ttl
-			if ttl != nil {
-				if time.Now().After(*ttl) {
+			if k.TTL != nil {
+				if time.Now().After(*k.TTL) {
 					return nil, nil
 				}
 			}
 
-			return v, nil
+			keyIter := bstarplustree.NewKeyIterator(k, sstable.bspt)
+
+			for keyIter.HasNext() {
+				// we just get first value
+				value, err := keyIter.Next()
+				if err != nil {
+					break
+				}
+
+				return value, nil
+
+			}
 		}
 	}
 

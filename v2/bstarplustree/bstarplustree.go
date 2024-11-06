@@ -37,15 +37,19 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"github.com/guycipher/k4/compressor"
 	"github.com/guycipher/k4/pager"
 	"os"
 	"time"
 )
 
+const COMPRESSION_WINDOW_SIZE = 1024 * 32 // The compression window size
+
 // BStarPlusTree is the main struct for the B*+Tree
 type BStarPlusTree struct {
-	Pager *pager.Pager // The pager for the bstarplustree
-	T     int          // The order of the tree
+	Pager    *pager.Pager // The pager for the bstarplustree
+	T        int          // The order of the tree
+	Compress bool         // Whether to compress nodes and values
 }
 
 // Key is the key struct for the a BStarPlusTree node
@@ -53,7 +57,6 @@ type Key struct {
 	K   []byte     // The key
 	V   []int64    // The values
 	TTL *time.Time // Time to live
-
 }
 
 // Node is the node struct for the BStarPlusTree
@@ -76,17 +79,18 @@ type KeyIterator struct {
 type Iterator interface {
 	HasNext() bool
 	Next() (*Key, error)
+	Prev() (*Key, error)
 }
 
 // InOrderIterator is an iterator for the keys of the BStarPlusTree in order
 type InOrderIterator struct {
 	stack []*Node
 	index int
-	bpt   *BStarPlusTree
+	bspt  *BStarPlusTree
 }
 
 // Open opens a new or existing BStarPlusTree
-func Open(name string, flag, perm int, t int) (*BStarPlusTree, error) {
+func Open(name string, flag, perm int, t int, compression bool) (*BStarPlusTree, error) {
 	if t < 2 {
 		return nil, errors.New("t must be greater than 1")
 	}
@@ -97,50 +101,63 @@ func Open(name string, flag, perm int, t int) (*BStarPlusTree, error) {
 	}
 
 	return &BStarPlusTree{
-		T:     t,
-		Pager: pager,
+		T:        t,
+		Pager:    pager,
+		Compress: compression,
 	}, nil
 }
 
 // Close closes the BStarPlusTree
-func (b *BStarPlusTree) Close() error {
-	return b.Pager.Close()
+func (bspt *BStarPlusTree) Close() error {
+	return bspt.Pager.Close()
 }
 
 // encodeNode encodes a node into a byte slice
-func encodeNode(n *Node) ([]byte, error) {
+func encodeNode(n *Node, compress bool) ([]byte, error) {
 	buff := new(bytes.Buffer)
 	enc := gob.NewEncoder(buff)
 	err := enc.Encode(n)
 	if err != nil {
 		return nil, err
 	}
+
+	// check if compress is set
+	if compress {
+		comp, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
+		if err != nil {
+			return nil, err
+		}
+
+		return comp.Compress(buff.Bytes()), nil
+
+	}
+
 	return buff.Bytes(), nil
 }
 
 // newNode creates a new BStarPlusTree node
-func (b *BStarPlusTree) newNode(leaf bool) (*Node, error) {
+func (bspt *BStarPlusTree) newNode(leaf bool) (*Node, error) {
 	newNode := &Node{
 		Leaf: leaf,
 		Keys: make([]*Key, 0),
 	}
 
-	encodedNode, err := encodeNode(newNode)
+	encodedNode, err := encodeNode(newNode, bspt.Compress)
 	if err != nil {
 		return nil, err
 	}
 
-	newNode.Page, err = b.Pager.Write(encodedNode)
+	newNode.Page, err = bspt.Pager.Write(encodedNode)
 	if err != nil {
 		return nil, err
 	}
 
-	encodedNode, err = encodeNode(newNode)
+	encodedNode, err = encodeNode(newNode, bspt.Compress)
 	if err != nil {
 		return nil, err
 	}
 
-	err = b.Pager.WriteTo(newNode.Page, encodedNode)
+	err = bspt.Pager.WriteTo(newNode.Page, encodedNode)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +188,16 @@ func decodeValue(data []byte) ([]byte, error) {
 }
 
 // decodeNode decodes a byte slice into a node
-func decodeNode(data []byte) (*Node, error) {
+func decodeNode(data []byte, decompress bool) (*Node, error) {
+	if decompress {
+		decomp, err := compressor.NewCompressor(COMPRESSION_WINDOW_SIZE)
+		if err != nil {
+			return nil, err
+		}
+
+		data = decomp.Decompress(data)
+	}
+
 	node := &Node{}
 	dec := gob.NewDecoder(bytes.NewReader(data))
 	err := dec.Decode(node)
@@ -182,8 +208,8 @@ func decodeNode(data []byte) (*Node, error) {
 }
 
 // getRoot returns the root of the BStarPlusTree
-func (b *BStarPlusTree) getRoot() (*Node, error) {
-	root, err := b.Pager.GetPage(0)
+func (bspt *BStarPlusTree) getRoot() (*Node, error) {
+	root, err := bspt.Pager.GetPage(0)
 	if err != nil {
 		if err.Error() == "EOF" {
 			rootNode := &Node{
@@ -193,12 +219,12 @@ func (b *BStarPlusTree) getRoot() (*Node, error) {
 				Keys:     make([]*Key, 0),
 			}
 
-			encodedRoot, err := encodeNode(rootNode)
+			encodedRoot, err := encodeNode(rootNode, bspt.Compress)
 			if err != nil {
 				return nil, err
 			}
 
-			err = b.Pager.WriteTo(0, encodedRoot)
+			err = bspt.Pager.WriteTo(0, encodedRoot)
 			if err != nil {
 				return nil, err
 			}
@@ -209,7 +235,7 @@ func (b *BStarPlusTree) getRoot() (*Node, error) {
 		}
 	}
 
-	rootNode, err := decodeNode(root)
+	rootNode, err := decodeNode(root, bspt.Compress)
 	if err != nil {
 		return nil, err
 	}
@@ -218,13 +244,13 @@ func (b *BStarPlusTree) getRoot() (*Node, error) {
 }
 
 // splitRoot splits the root node
-func (b *BStarPlusTree) splitRoot() error {
-	oldRoot, err := b.getRoot()
+func (bspt *BStarPlusTree) splitRoot() error {
+	oldRoot, err := bspt.getRoot()
 	if err != nil {
 		return err
 	}
 
-	newOldRoot, err := b.newNode(oldRoot.Leaf)
+	newOldRoot, err := bspt.newNode(oldRoot.Leaf)
 	if err != nil {
 		return err
 	}
@@ -237,27 +263,27 @@ func (b *BStarPlusTree) splitRoot() error {
 		Children: []int64{newOldRoot.Page},
 	}
 
-	err = b.splitChild(newRoot, 0, newOldRoot)
+	err = bspt.splitChild(newRoot, 0, newOldRoot)
 	if err != nil {
 		return err
 	}
 
-	encodedNewRoot, err := encodeNode(newRoot)
+	encodedNewRoot, err := encodeNode(newRoot, bspt.Compress)
 	if err != nil {
 		return err
 	}
 
-	err = b.Pager.WriteTo(newRoot.Page, encodedNewRoot)
+	err = bspt.Pager.WriteTo(newRoot.Page, encodedNewRoot)
 	if err != nil {
 		return err
 	}
 
-	encodedNewOldRoot, err := encodeNode(newOldRoot)
+	encodedNewOldRoot, err := encodeNode(newOldRoot, bspt.Compress)
 	if err != nil {
 		return err
 	}
 
-	err = b.Pager.WriteTo(newOldRoot.Page, encodedNewOldRoot)
+	err = bspt.Pager.WriteTo(newOldRoot.Page, encodedNewOldRoot)
 	if err != nil {
 		return err
 	}
@@ -265,66 +291,39 @@ func (b *BStarPlusTree) splitRoot() error {
 	return nil
 }
 
-// splitChild splits a child node of x at index i
-func (b *BStarPlusTree) splitChild(x *Node, i int, y *Node) error {
-	z, err := b.newNode(y.Leaf)
+// splitChild
+func (bspt *BStarPlusTree) splitChild(parent *Node, index int, fullNode *Node) error {
+	// Create a new node to hold the split keys and children
+	newNode, err := bspt.newNode(fullNode.Leaf)
 	if err != nil {
 		return err
 	}
 
-	z.Keys = append(z.Keys, y.Keys[b.T:]...)
-	y.Keys = y.Keys[:b.T]
+	// Determine the midpoint for splitting
+	mid := (len(fullNode.Keys) + 1) / 2
 
-	if !y.Leaf {
-		z.Children = append(z.Children, y.Children[b.T:]...)
-		y.Children = y.Children[:b.T]
-	} else {
-		z.Next = y.Next
-		y.Next = z.Page
+	// Move the keys and children from the full node to the new node
+	newNode.Keys = append(newNode.Keys, fullNode.Keys[mid:]...)
+	fullNode.Keys = fullNode.Keys[:mid]
+
+	if !fullNode.Leaf {
+		newNode.Children = append(newNode.Children, fullNode.Children[mid:]...)
+		fullNode.Children = fullNode.Children[:mid]
 	}
 
-	x.Keys = append(x.Keys, nil)
-	x.Children = append(x.Children, 0)
+	// Insert the new node into the parent node
+	parent.Children = append(parent.Children[:index+1], append([]int64{newNode.Page}, parent.Children[index+1:]...)...)
+	parent.Keys = append(parent.Keys[:index], append([]*Key{fullNode.Keys[mid-1]}, parent.Keys[index:]...)...)
+	fullNode.Keys = fullNode.Keys[:mid-1] // Adjust the keys in the full node
 
-	for j := len(x.Keys) - 1; j > i; j-- {
-		x.Keys[j] = x.Keys[j-1]
-	}
-	x.Keys[i] = y.Keys[b.T-1]
-
-	y.Keys = y.Keys[:b.T-1]
-
-	for j := len(x.Children) - 1; j > i+1; j-- {
-		x.Children[j] = x.Children[j-1]
-	}
-	x.Children[i+1] = z.Page
-
-	encodedY, err := encodeNode(y)
-	if err != nil {
+	// Write the updated nodes to the pager
+	if err := bspt.writeNode(fullNode); err != nil {
 		return err
 	}
-
-	err = b.Pager.WriteTo(y.Page, encodedY)
-	if err != nil {
+	if err := bspt.writeNode(newNode); err != nil {
 		return err
 	}
-
-	encodedZ, err := encodeNode(z)
-	if err != nil {
-		return err
-	}
-
-	err = b.Pager.WriteTo(z.Page, encodedZ)
-	if err != nil {
-		return err
-	}
-
-	encodedX, err := encodeNode(x)
-	if err != nil {
-		return err
-	}
-
-	err = b.Pager.WriteTo(x.Page, encodedX)
-	if err != nil {
+	if err := bspt.writeNode(parent); err != nil {
 		return err
 	}
 
@@ -332,24 +331,24 @@ func (b *BStarPlusTree) splitChild(x *Node, i int, y *Node) error {
 }
 
 // Put inserts a key into the BStarPlusTree
-func (b *BStarPlusTree) Put(key, value []byte, ttl *time.Time) error {
-	root, err := b.getRoot()
+func (bspt *BStarPlusTree) Put(key, value []byte, ttl *time.Time) error {
+	root, err := bspt.getRoot()
 	if err != nil {
 		return err
 	}
 
-	if len(root.Keys) == (2*b.T)-1 {
-		err = b.splitRoot()
+	if len(root.Keys) == (2*bspt.T)-1 {
+		err = bspt.splitRoot()
 		if err != nil {
 			return err
 		}
 
-		rootBytes, err := b.Pager.GetPage(0)
+		rootBytes, err := bspt.Pager.GetPage(0)
 		if err != nil {
 			return err
 		}
 
-		root, err = decodeNode(rootBytes)
+		root, err = decodeNode(rootBytes, bspt.Compress)
 		if err != nil {
 			return err
 		}
@@ -361,12 +360,12 @@ func (b *BStarPlusTree) Put(key, value []byte, ttl *time.Time) error {
 		return err
 	}
 
-	valuePage, err := b.Pager.Write(encodedValue)
+	valuePage, err := bspt.Pager.Write(encodedValue)
 	if err != nil {
 		return err
 	}
 
-	err = b.insertNonFull(root, key, valuePage, ttl)
+	err = bspt.insertNonFull(root, key, valuePage, ttl)
 	if err != nil {
 		return err
 	}
@@ -390,12 +389,12 @@ func equal(a, b []byte) bool {
 }
 
 // PrintTree prints the tree (for debugging )
-func (b *BStarPlusTree) PrintTree() error {
-	root, err := b.getRoot()
+func (bspt *BStarPlusTree) PrintTree() error {
+	root, err := bspt.getRoot()
 	if err != nil {
 		return err
 	}
-	err = b.printTree(root, "", true)
+	err = bspt.printTree(root, "", true)
 	if err != nil {
 		return err
 	}
@@ -403,7 +402,7 @@ func (b *BStarPlusTree) PrintTree() error {
 }
 
 // printTree prints the tree (for debugging)
-func (b *BStarPlusTree) printTree(node *Node, indent string, last bool) error {
+func (bspt *BStarPlusTree) printTree(node *Node, indent string, last bool) error {
 	fmt.Print(indent)
 	if last {
 		fmt.Print("└── ")
@@ -419,17 +418,17 @@ func (b *BStarPlusTree) printTree(node *Node, indent string, last bool) error {
 	fmt.Println()
 
 	for i, child := range node.Children {
-		cBytes, err := b.Pager.GetPage(child)
+		cBytes, err := bspt.Pager.GetPage(child)
 		if err != nil {
 			return err
 		}
 
-		c, err := decodeNode(cBytes)
+		c, err := decodeNode(cBytes, bspt.Compress)
 		if err != nil {
 			return err
 		}
 
-		b.printTree(c, indent, i == len(node.Children)-1)
+		bspt.printTree(c, indent, i == len(node.Children)-1)
 	}
 
 	return nil
@@ -466,244 +465,149 @@ func (it *KeyIterator) Next() ([]byte, error) {
 }
 
 // Get retrieves a key from the BStarPlusTree
-func (b *BStarPlusTree) Get(key []byte) (*KeyIterator, error) {
-	root, err := b.getRoot()
+func (bspt *BStarPlusTree) Get(key []byte) (*KeyIterator, error) {
+	root, err := bspt.getRoot()
 	if err != nil {
 		return nil, err
 	}
 
-	return b.get(root, key)
+	return bspt.get(root, key)
 }
 
 // get retrieves a key from the BStarPlusTree
-func (b *BStarPlusTree) get(x *Node, key []byte) (*KeyIterator, error) {
+func (bspt *BStarPlusTree) get(x *Node, key []byte) (*KeyIterator, error) {
 	i := 0
 	for i < len(x.Keys) && lessThan(x.Keys[i].K, key) {
 		i++
 	}
 
 	if i < len(x.Keys) && equal(x.Keys[i].K, key) {
-		return NewKeyIterator(x.Keys[i], b), nil
+		return NewKeyIterator(x.Keys[i], bspt), nil
 	} else if x.Leaf {
 		return nil, errors.New("key not found")
 	} else {
-		childBytes, err := b.Pager.GetPage(x.Children[i])
+		childBytes, err := bspt.Pager.GetPage(x.Children[i])
 		if err != nil {
 			return nil, err
 		}
 
-		child, err := decodeNode(childBytes)
+		child, err := decodeNode(childBytes, bspt.Compress)
 		if err != nil {
 			return nil, err
 		}
 
-		return b.get(child, key)
+		return bspt.get(child, key)
 	}
-}
-
-// redistributeOrSplitChild redistributes keys between a node and its sibling or splits them if both are full
-func (b *BStarPlusTree) redistributeOrSplitChild(x *Node, i int, y *Node) error {
-	var sibling *Node
-	var siblingIndex int
-
-	// Check if the right sibling exists and has space
-	if i+1 < len(x.Children) {
-		siblingBytes, err := b.Pager.GetPage(x.Children[i+1])
-		if err != nil {
-			return err
-		}
-		sibling, err = decodeNode(siblingBytes)
-		if err != nil {
-			return err
-		}
-		siblingIndex = i + 1
-	}
-
-	// If the right sibling has space, redistribute keys
-	if sibling != nil && len(sibling.Keys) < (2*b.T)-1 {
-		// Combine keys and redistribute
-		keys := append(y.Keys, x.Keys[i])
-		keys = append(keys, sibling.Keys...)
-		midIndex := (len(keys) + 1) / 2
-
-		y.Keys = keys[:midIndex]
-		x.Keys[i] = keys[midIndex]
-		sibling.Keys = keys[midIndex+1:]
-
-		// Update children if not leaf
-		if !y.Leaf {
-			children := append(y.Children, sibling.Children...)
-			y.Children = children[:midIndex+1]
-			sibling.Children = children[midIndex+1:]
-		}
-
-		// Write updated nodes to pager
-		if err := b.writeNode(y); err != nil {
-			return err
-		}
-		if err := b.writeNode(sibling); err != nil {
-			return err
-		}
-		if err := b.writeNode(x); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// If the left sibling exists and has space, redistribute keys
-	if i > 0 {
-		siblingBytes, err := b.Pager.GetPage(x.Children[i-1])
-		if err != nil {
-			return err
-		}
-		sibling, err = decodeNode(siblingBytes)
-		if err != nil {
-			return err
-		}
-		siblingIndex = i - 1
-	}
-
-	// If the left sibling has space, redistribute keys
-	if sibling != nil && len(sibling.Keys) < (2*b.T)-1 {
-		// Combine keys and redistribute
-		keys := append(sibling.Keys, x.Keys[siblingIndex])
-		keys = append(keys, y.Keys...)
-		midIndex := (len(keys) + 1) / 2
-
-		sibling.Keys = keys[:midIndex]
-		x.Keys[siblingIndex] = keys[midIndex]
-		y.Keys = keys[midIndex+1:]
-
-		// Update children if not leaf
-		if !y.Leaf {
-			children := append(sibling.Children, y.Children...)
-			sibling.Children = children[:midIndex+1]
-			y.Children = children[midIndex+1:]
-		}
-
-		// Write updated nodes to pager
-		if err := b.writeNode(sibling); err != nil {
-			return err
-		}
-		if err := b.writeNode(y); err != nil {
-			return err
-		}
-		if err := b.writeNode(x); err != nil {
-			return err
-		}
-		return nil
-	}
-
-	// If both siblings are full, split into three nodes
-	return b.splitChild(x, i, y)
 }
 
 // writeNode encodes and writes a node to the pager
-func (b *BStarPlusTree) writeNode(n *Node) error {
-	encodedNode, err := encodeNode(n)
+func (bspt *BStarPlusTree) writeNode(n *Node) error {
+	encodedNode, err := encodeNode(n, bspt.Compress)
 	if err != nil {
 		return err
 	}
-	return b.Pager.WriteTo(n.Page, encodedNode)
+	return bspt.Pager.WriteTo(n.Page, encodedNode)
 }
 
 // insertNonFull inserts a key into a non-full node
-func (b *BStarPlusTree) insertNonFull(x *Node, key []byte, value int64, ttl *time.Time) error {
-	i := len(x.Keys) - 1
+func (bspt *BStarPlusTree) insertNonFull(node *Node, key []byte, value int64, ttl *time.Time) error {
+	i := len(node.Keys) - 1
 
-	if x.Leaf {
-		// Find the position to insert the new key
-		for i >= 0 && lessThan(key, x.Keys[i].K) {
+	if node.Leaf {
+		// Check if the key already exists
+		for j := 0; j <= i; j++ {
+			if equal(key, node.Keys[j].K) {
+				node.Keys[j].V = append(node.Keys[j].V, value)
+				return bspt.writeNode(node)
+			}
+		}
+
+		// Insert the key in sorted order
+		node.Keys = append(node.Keys, nil) // Make space for new key
+		for i >= 0 && lessThan(key, node.Keys[i].K) {
+			node.Keys[i+1] = node.Keys[i]
 			i--
 		}
-
-		// Check if the key already exists
-		if i >= 0 && equal(key, x.Keys[i].K) {
-			x.Keys[i].V = append(x.Keys[i].V, value)
-
-			// update ttl
-			if ttl != nil {
-				x.Keys[i].TTL = ttl
-			}
-
-			encodedNode, err := encodeNode(x)
-			if err != nil {
-				return err
-			}
-
-			err = b.Pager.WriteTo(x.Page, encodedNode)
-			if err != nil {
-				return err
-			}
-
-			return nil
-		} else {
-			// Insert the new key
-			x.Keys = append(x.Keys, nil)
-			copy(x.Keys[i+2:], x.Keys[i+1:])
-			if ttl != nil {
-				x.Keys[i+1] = &Key{K: key, V: []int64{value}, TTL: ttl}
-			} else {
-				x.Keys[i+1] = &Key{K: key, V: []int64{value}}
-			}
-		}
-
-		encodedNode, err := encodeNode(x)
-		if err != nil {
-			return err
-		}
-
-		err = b.Pager.WriteTo(x.Page, encodedNode)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		node.Keys[i+1] = &Key{K: key, V: []int64{value}, TTL: ttl}
 	} else {
-		// Find the child to recurse into
-		for i >= 0 && lessThan(key, x.Keys[i].K) {
+		// Find the child to insert the key into
+		for i >= 0 && lessThan(key, node.Keys[i].K) {
 			i--
 		}
 		i++
-
-		childBytes, err := b.Pager.GetPage(x.Children[i])
+		childBytes, err := bspt.Pager.GetPage(node.Children[i])
+		if err != nil {
+			return err
+		}
+		child, err := decodeNode(childBytes, bspt.Compress)
 		if err != nil {
 			return err
 		}
 
-		child, err := decodeNode(childBytes)
-		if err != nil {
-			return err
-		}
-
-		// If the child is full, split it
-		if len(child.Keys) == (2*b.T)-1 {
-			err = b.splitChild(x, i, child)
-			if err != nil {
-				return err
+		if len(child.Keys) == (2*bspt.T)-1 {
+			if i+1 < len(node.Children) {
+				rightSiblingBytes, err := bspt.Pager.GetPage(node.Children[i+1])
+				if err != nil {
+					return err
+				}
+				rightSibling, err := decodeNode(rightSiblingBytes, bspt.Compress)
+				if err != nil {
+					return err
+				}
+				if len(rightSibling.Keys) < (2*bspt.T)-1 {
+					err = bspt.redistributeKeys(node, child, rightSibling, i)
+					if err != nil {
+						return err
+					}
+				} else if i-1 >= 0 {
+					leftSiblingBytes, err := bspt.Pager.GetPage(node.Children[i-1])
+					if err != nil {
+						return err
+					}
+					leftSibling, err := decodeNode(leftSiblingBytes, bspt.Compress)
+					if err != nil {
+						return err
+					}
+					if len(leftSibling.Keys) < (2*bspt.T)-1 {
+						err = bspt.redistributeKeys(node, leftSibling, child, i-1)
+						if err != nil {
+							return err
+						}
+					} else {
+						err = bspt.splitChild(node, i, child)
+						if err != nil {
+							return err
+						}
+						if greaterThan(key, node.Keys[i].K) {
+							i++
+						}
+					}
+				} else {
+					err = bspt.splitChild(node, i, child)
+					if err != nil {
+						return err
+					}
+					if greaterThan(key, node.Keys[i].K) {
+						i++
+					}
+				}
+			} else {
+				err = bspt.splitChild(node, i, child)
+				if err != nil {
+					return err
+				}
+				if greaterThan(key, node.Keys[i].K) {
+					i++
+				}
 			}
-
-			if greaterThan(key, x.Keys[i].K) {
-				i++
-			}
 		}
-
-		childBytes, err = b.Pager.GetPage(x.Children[i])
-		if err != nil {
-			return err
-		}
-
-		child, err = decodeNode(childBytes)
-		if err != nil {
-			return err
-		}
-
-		err = b.insertNonFull(child, key, value, ttl)
+		err = bspt.insertNonFull(child, key, value, ttl)
 		if err != nil {
 			return err
 		}
 	}
-	return nil
+
+	return bspt.writeNode(node)
 }
 
 // NewKeyIterator creates a new KeyIterator
@@ -716,15 +620,15 @@ func NewKeyIterator(key *Key, bspt *BStarPlusTree) *KeyIterator {
 }
 
 // NewInOrderIterator creates a new InOrderIterator
-func NewInOrderIterator(bpt *BStarPlusTree) (*InOrderIterator, error) {
-	root, err := bpt.getRoot()
+func NewInOrderIterator(bspt *BStarPlusTree) (*InOrderIterator, error) {
+	root, err := bspt.getRoot()
 	if err != nil {
 		return nil, err
 	}
 	it := &InOrderIterator{
 		stack: []*Node{},
 		index: -1,
-		bpt:   bpt,
+		bspt:  bspt,
 	}
 	it.pushLeft(root)
 	return it, nil
@@ -735,11 +639,11 @@ func (it *InOrderIterator) pushLeft(node *Node) {
 	for node != nil {
 		it.stack = append(it.stack, node)
 		if len(node.Children) > 0 {
-			childBytes, err := it.bpt.Pager.GetPage(node.Children[0])
+			childBytes, err := it.bspt.Pager.GetPage(node.Children[0])
 			if err != nil {
 				return
 			}
-			child, err := decodeNode(childBytes)
+			child, err := decodeNode(childBytes, it.bspt.Compress)
 			if err != nil {
 				return
 			}
@@ -772,11 +676,11 @@ func (it *InOrderIterator) Next() (*Key, error) {
 	} else {
 		it.index = -1
 		if len(node.Children) > it.index+2 {
-			childBytes, err := it.bpt.Pager.GetPage(node.Children[it.index+2])
+			childBytes, err := it.bspt.Pager.GetPage(node.Children[it.index+2])
 			if err != nil {
 				return nil, err
 			}
-			child, err := decodeNode(childBytes)
+			child, err := decodeNode(childBytes, it.bspt.Compress)
 			if err != nil {
 				return nil, err
 			}
@@ -785,4 +689,76 @@ func (it *InOrderIterator) Next() (*Key, error) {
 	}
 
 	return key, nil
+}
+
+// HasPrev returns true if there are previous keys in the BStarPlusTree
+func (it *InOrderIterator) HasPrev() bool {
+	return len(it.stack) > 0 || it.index > 0
+}
+
+// Prev returns the previous key in the BStarPlusTree
+func (it *InOrderIterator) Prev() (*Key, error) {
+	if len(it.stack) == 0 && it.index <= 0 {
+		return nil, errors.New("no previous keys")
+	}
+
+	if it.index > 0 {
+		it.index--
+		node := it.stack[len(it.stack)-1]
+		return node.Keys[it.index], nil
+	}
+
+	node := it.stack[len(it.stack)-1]
+	it.stack = it.stack[:len(it.stack)-1]
+
+	if len(node.Children) > 0 {
+		childBytes, err := it.bspt.Pager.GetPage(node.Children[len(node.Children)-1])
+		if err != nil {
+			return nil, err
+		}
+		child, err := decodeNode(childBytes, it.bspt.Compress)
+		if err != nil {
+			return nil, err
+		}
+		it.pushLeft(child)
+	}
+
+	it.index = len(node.Keys) - 1
+	return node.Keys[it.index], nil
+}
+
+// redistributeKeys redistributes keys between a node and its sibling
+func (bspt *BStarPlusTree) redistributeKeys(parent *Node, node *Node, sibling *Node, index int) error {
+	if index < len(parent.Keys) && lessThan(parent.Keys[index].K, sibling.Keys[0].K) {
+		// Redistribute keys from sibling to node
+		node.Keys = append(node.Keys, parent.Keys[index])
+		parent.Keys[index] = sibling.Keys[0]
+		sibling.Keys = sibling.Keys[1:]
+		if !sibling.Leaf {
+			node.Children = append(node.Children, sibling.Children[0])
+			sibling.Children = sibling.Children[1:]
+		}
+	} else {
+		// Redistribute keys from node to sibling
+		sibling.Keys = append([]*Key{parent.Keys[index]}, sibling.Keys...)
+		parent.Keys[index] = node.Keys[len(node.Keys)-1]
+		node.Keys = node.Keys[:len(node.Keys)-1]
+		if !sibling.Leaf {
+			sibling.Children = append([]int64{node.Children[len(node.Children)-1]}, sibling.Children...)
+			node.Children = node.Children[:len(node.Children)-1]
+		}
+	}
+
+	// Write the updated nodes to the pager
+	if err := bspt.writeNode(node); err != nil {
+		return err
+	}
+	if err := bspt.writeNode(sibling); err != nil {
+		return err
+	}
+	if err := bspt.writeNode(parent); err != nil {
+		return err
+	}
+
+	return nil
 }

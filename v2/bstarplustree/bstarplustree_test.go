@@ -49,7 +49,7 @@ func TestBStarPlusTree_OpenClose(t *testing.T) {
 	defer os.Remove(file.Name())
 
 	// Open the BStarPlusTree
-	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4)
+	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4, false)
 	if err != nil {
 		t.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestBStarPlusTree_InsertRetrieve(t *testing.T) {
 	defer os.Remove(file.Name())
 
 	// Open the BStarPlusTree
-	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4)
+	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4, false)
 	if err != nil {
 		t.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestBStarPlusTree_Reopen(t *testing.T) {
 	defer os.Remove(file.Name())
 
 	// Open the BStarPlusTree
-	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4)
+	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4, false)
 	if err != nil {
 		t.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestBStarPlusTree_Reopen(t *testing.T) {
 	}
 
 	// Reopen the BStarPlusTree
-	tree, err = Open(file.Name(), os.O_RDWR, 0644, 4)
+	tree, err = Open(file.Name(), os.O_RDWR, 0644, 4, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen BStarPlusTree: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestBStarPlusTree_DuplicateKeys(t *testing.T) {
 	defer os.Remove(file.Name())
 
 	// Open the BStarPlusTree
-	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4)
+	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4, false)
 	if err != nil {
 		t.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestBStarPlusTree_SplitNodes(t *testing.T) {
 	defer os.Remove(file.Name())
 
 	// Open the BStarPlusTree
-	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4)
+	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4, false)
 	if err != nil {
 		t.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestBStarPlusTree_Iterator(t *testing.T) {
 	defer os.Remove(file.Name())
 
 	// Open the BStarPlusTree
-	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4)
+	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4, false)
 	if err != nil {
 		t.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
@@ -301,6 +301,19 @@ func TestBStarPlusTree_Iterator(t *testing.T) {
 			t.Fatalf("Expected key %v, got %v", expectedKey, key.K)
 		}
 	}
+
+	// Iterate backwards over the tree and verify the order
+	for i := 9; iter.HasPrev(); i-- {
+		key, err := iter.Prev()
+		if err != nil {
+			t.Fatalf("Failed to get previous key: %v", err)
+		}
+
+		expectedKey := []byte(fmt.Sprintf("key%d", i))
+		if string(key.K) != string(expectedKey) {
+			t.Fatalf("Expected key %v, got %v", expectedKey, key.K)
+		}
+	}
 }
 
 func TestBStarPlusTree_NonRootNodesFullness(t *testing.T) {
@@ -314,7 +327,7 @@ func TestBStarPlusTree_NonRootNodesFullness(t *testing.T) {
 	defer os.Remove(file.Name())
 
 	// Open the BStarPlusTree
-	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4)
+	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4, false)
 	if err != nil {
 		t.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}

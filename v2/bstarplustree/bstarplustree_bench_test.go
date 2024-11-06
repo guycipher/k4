@@ -41,7 +41,7 @@ import (
 func BenchmarkPut(b *testing.B) {
 	defer os.Remove("test.db")
 
-	tree, err := Open("test.db", os.O_CREATE|os.O_RDWR, 0644, 3)
+	tree, err := Open("test.db", os.O_CREATE|os.O_RDWR, 0644, 3, false)
 	if err != nil {
 		b.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
@@ -59,7 +59,7 @@ func BenchmarkPut(b *testing.B) {
 // BenchmarkGet benchmarks the Get method of BStarPlusTree
 func BenchmarkGet(b *testing.B) {
 	defer os.Remove("test.db")
-	tree, err := Open("test.db", os.O_CREATE|os.O_RDWR, 0644, 3)
+	tree, err := Open("test.db", os.O_CREATE|os.O_RDWR, 0644, 3, false)
 	if err != nil {
 		b.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
@@ -88,7 +88,7 @@ func BenchmarkGet(b *testing.B) {
 // BenchmarkInOrderIterator benchmarks the InOrderIterator of BStarPlusTree
 func BenchmarkInOrderIterator(b *testing.B) {
 	defer os.Remove("test.db")
-	tree, err := Open("test.db", os.O_CREATE|os.O_RDWR, 0644, 3)
+	tree, err := Open("test.db", os.O_CREATE|os.O_RDWR, 0644, 3, false)
 	if err != nil {
 		b.Fatalf("Failed to open BStarPlusTree: %v", err)
 	}
