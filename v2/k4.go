@@ -537,7 +537,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 			}
 		}
 
-		if ttl != nil {
+		if ttl != nil { // check for ttl
 			expirationTime := time.Now().Add(*ttl)
 			if time.Now().After(expirationTime) { // if the key has expired we skip it
 				continue
@@ -548,6 +548,8 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 			sstable.bspt.Put(key, value, &expirationTime)
 
 		} else {
+			hs.Add(key) // add key to hash set
+
 			sstable.bspt.Put(key, value, nil)
 
 		}
@@ -584,7 +586,7 @@ func (k4 *K4) createSSTable() (*SSTable, error) {
 	k4.sstablesLock.RLock()         // read lock
 	defer k4.sstablesLock.RUnlock() // unlock on defer
 
-	// Create SSTable file
+	// Create SSTable file and B*+Tree
 	sstableBSPT, err := bstarplustree.Open(k4.directory+string(os.PathSeparator)+sstableFilename(len(k4.sstables)), os.O_RDWR|os.O_CREATE, 0644, SSTABLE_DEGREE, k4.compress)
 	if err != nil {
 		return nil, err
@@ -608,7 +610,7 @@ func (k4 *K4) createSSTableNoLock() (*SSTable, error) {
 		return nil, err
 	}
 
-	// Create SSTable
+	// Create SSTable file and B*+Tree
 	return &SSTable{
 		bspt:       sstableBSPT,
 		lock:       &sync.RWMutex{},
