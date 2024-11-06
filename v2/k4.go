@@ -441,7 +441,7 @@ func deserializeKv(data []byte) (key, value []byte, ttl *time.Time, err error) {
 
 }
 
-// loadSSTables loads SSTables from the directory
+// loadSSTables loads SSTables from the configured K4 directory.
 func (k4 *K4) loadSSTables() {
 
 	// Open configured K4 directory
@@ -472,6 +472,7 @@ func (k4 *K4) loadSSTables() {
 
 	// Open and append SSTables
 	for _, file := range sstableFiles {
+		// Open SSTable B*+Tree with SSTABLE_DEGREE and configured K4 compression
 		sstableBPST, err := bstarplustree.Open(k4.directory+string(os.PathSeparator)+file.Name(), os.O_RDWR, 0644, SSTABLE_DEGREE, k4.compress)
 		if err != nil {
 			// could possibly handle this better
@@ -514,39 +515,13 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// Create a new skiplist iterator
 	it := skiplist.NewIterator(memtable)
 
-	// first we will create a hashset which will be on initial pages of sstable
-	// we will add all the keys to the hashset
-	// then we will add the key value pairs to the sstable
+	// first we will create a hashset which will be on final pages of sstable
+	// whilst we write to the sstable tree we will also add the keys to the hashset
 
 	// create a hashset
 	hs := hashset.NewHashSet()
 
-	// add all the keys to the hashset
-	for it.Next() {
-
-		// get the current key and value
-		key, val, _ := it.Current()
-		if key == nil {
-			continue
-		}
-
-		// Check if tombstone
-		if bytes.Equal(val, []byte(TOMBSTONE_VALUE)) {
-			continue // skip tombstones
-		}
-
-		hs.Add(key) // add key to hash set
-	}
-
-	// serialize the hashset
-	hsData, err := hs.Serialize()
-	if err != nil {
-		return err
-	}
-
-	// We create another iterator to write the key value pairs to the sstable
-	it = skiplist.NewIterator(memtable)
-
+	// iterate over memtable and populate the sstable and hashset
 	for it.Next() {
 		key, value, ttl := it.Current()
 		if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
@@ -568,6 +543,8 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 				continue
 			}
 
+			hs.Add(key) // add key to hash set
+
 			sstable.bspt.Put(key, value, &expirationTime)
 
 		} else {
@@ -575,6 +552,12 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 
 		}
 
+	}
+
+	// serialize the hashset
+	hsData, err := hs.Serialize()
+	if err != nil {
+		return err
 	}
 
 	// Write the hashset to the last page of the sstable
