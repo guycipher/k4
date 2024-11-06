@@ -1523,22 +1523,46 @@ func (k4 *K4) LessThan(key []byte) (*KeyValueArray, error) {
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager, k4.compress)
-		for it.next() {
-			k, value, ttl := it.current()
-			if bytes.Compare(k, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+		sstIter, err := bstarplustree.NewInOrderIterator(sstable.bspt)
+		if err != nil {
+			return nil, err
+		}
+
+		for sstIter.HasNext() {
+			k, err := sstIter.Next()
+			if err != nil {
+				return nil, err
+			}
+
+			keyIter := bstarplustree.NewKeyIterator(k, sstable.bspt)
+
+			for keyIter.HasNext() {
 				// check ttl
-				if ttl != nil {
-					if time.Now().After(*ttl) {
+				if k.TTL != nil {
+					if time.Now().After(*k.TTL) {
 						continue
 					}
 				}
 
-				if _, exists := result.binarySearch(k); !exists {
-					result.append(&KV{
-						Key:   k,
-						Value: value,
-					})
+				value, err := keyIter.Next()
+				if err != nil {
+					break
+				}
+
+				if bytes.Compare(k.K, key) < 0 && bytes.Compare(value, []byte(TOMBSTONE_VALUE)) != 0 {
+					// check ttl
+					if k.TTL != nil {
+						if time.Now().After(*k.TTL) {
+							continue
+						}
+					}
+
+					if _, exists := result.binarySearch(k.K); !exists {
+						result.append(&KV{
+							Key:   k.K,
+							Value: value,
+						})
+					}
 				}
 			}
 		}
