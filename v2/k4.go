@@ -110,12 +110,6 @@ const (
 	GET
 )
 
-// SSTableIterator is the structure for the SSTable iterator
-type SSTableIterator struct {
-	bspt       *bstarplustree.BStarPlusTree // the bstarplustree for the sstable
-	compressed bool                         // whether the sstable is compressed
-}
-
 // WALIterator is the structure for the WAL iterator
 type WALIterator struct {
 	pager       *pager.Pager // the pager for the wal file
@@ -137,13 +131,13 @@ type KeyValueArray []*KV
 // Iterator is a structure for an iterator which goes through
 // memtable and sstables.  First it goes through the memtable, then once exhausted goes through the sstables
 type Iterator struct {
-	instance     *K4                        // the instance of K4
-	memtableIter *skiplist.SkipListIterator // memtable iterator
-	sstablesIter []*SSTableIterator         // an iterator for each sstable
-	currentKey   []byte                     // the current key
-	currentValue []byte                     // the current value
-	sstIterIndex int                        // the current sstable iterator index
-	prevStarted  bool                       // whether the previous function was called
+	instance     *K4                              // the instance of K4
+	memtableIter *skiplist.SkipListIterator       // memtable iterator
+	sstablesIter []*bstarplustree.InOrderIterator // an iterator for each sstable
+	currentKey   []byte                           // the current key
+	currentValue []byte                           // the current value
+	sstIterIndex int                              // the current sstable iterator index
+	prevStarted  bool                             // whether the previous function was called
 }
 
 // Open opens a new K4 instance at the specified directory.
@@ -1957,11 +1951,11 @@ func NewIterator(instance *K4) *Iterator {
 		return nil
 	}
 
-	sstablesIter := make([]*SSTableIterator, len(instance.sstables)) // We create an array of sstable iterators
+	sstablesIter := make([]*bstarplustree.InOrderIterator, len(instance.sstables)) // We create an array of sstable iterators
 
 	// We create an iterator for each sstable
 	for i, sstable := range instance.sstables {
-		sstablesIter[i] = newSSTableIterator(sstable.pager, sstable.compressed)
+		sstablesIter[i], _ = bstarplustree.NewInOrderIterator(sstable.bspt)
 	}
 
 	return &Iterator{
@@ -1987,21 +1981,33 @@ func (it *Iterator) Next() ([]byte, []byte) {
 
 	// Iterate through SSTables
 	for it.sstIterIndex >= 0 {
-		if it.sstablesIter[it.sstIterIndex].next() {
-			key, value, ttl := it.sstablesIter[it.sstIterIndex].current()
-			if key != nil {
-				if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
-					continue
-				}
+		if it.sstablesIter[it.sstIterIndex].HasNext() {
+			k, err := it.sstablesIter[it.sstIterIndex].Next()
+			if err != nil {
+				return nil, nil
+			}
+			if k != nil {
+				keyIter := bstarplustree.NewKeyIterator(k, it.sstablesIter[it.sstIterIndex].GetBSPT())
 
-				// check ttl
-				if ttl != nil {
-					if time.Now().After(*ttl) {
+				for keyIter.HasNext() {
+					// check ttl
+					if k.TTL != nil {
+						if time.Now().After(*k.TTL) {
+							continue
+						}
+					}
+
+					value, err := keyIter.Next()
+					if err != nil {
+						break
+					}
+
+					if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 						continue
 					}
-				}
 
-				return key, value
+					return k.K, value
+				}
 			}
 		} else {
 			it.sstIterIndex--
@@ -2047,20 +2053,34 @@ func (it *Iterator) Prev() ([]byte, []byte) {
 	// Iterate through SSTables
 	for it.sstIterIndex < len(it.sstablesIter) {
 
-		if it.sstablesIter[it.sstIterIndex].prev() {
-			key, value, ttl := it.sstablesIter[it.sstIterIndex].current()
-			if key != nil {
-				if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
-					continue
-				}
+		if it.sstablesIter[it.sstIterIndex].HasPrev() {
+			k, err := it.sstablesIter[it.sstIterIndex].Prev()
+			if err != nil {
+				return nil, nil
+			}
 
-				if ttl != nil {
-					if time.Now().After(*ttl) {
+			if k != nil {
+				keyIter := bstarplustree.NewKeyIterator(k, it.sstablesIter[it.sstIterIndex].GetBSPT())
+
+				for keyIter.HasNext() {
+					// check ttl
+					if k.TTL != nil {
+						if time.Now().After(*k.TTL) {
+							continue
+						}
+					}
+
+					value, err := keyIter.Next()
+					if err != nil {
+						break
+					}
+
+					if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 						continue
 					}
-				}
 
-				return key, value
+					return k.K, value
+				}
 			}
 		} else {
 			it.sstIterIndex++
@@ -2079,7 +2099,7 @@ func (it *Iterator) Reset() {
 
 	// We reset the sstable iterators
 	for i := 0; i < len(it.sstablesIter); i++ {
-		it.sstablesIter[i] = newSSTableIterator(it.instance.sstables[i].pager, it.instance.sstables[i].compressed) // Create new iterator for sstable
+		it.sstablesIter[i], _ = bstarplustree.NewInOrderIterator(it.instance.sstables[i].bspt) // Create new iterator for sstable
 	}
 
 	it.prevStarted = false // We reset the prevStarted to false

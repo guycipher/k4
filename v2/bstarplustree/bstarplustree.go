@@ -80,6 +80,7 @@ type Iterator interface {
 	HasNext() bool
 	Next() (*Key, error)
 	Prev() (*Key, error)
+	GetBSPT() *BStarPlusTree
 }
 
 // InOrderIterator is an iterator for the keys of the BStarPlusTree in order
@@ -657,6 +658,11 @@ func (it *InOrderIterator) pushLeft(node *Node) {
 // HasNext returns true if there are more keys in the BStarPlusTree
 func (it *InOrderIterator) HasNext() bool {
 	return len(it.stack) > 0
+}
+
+// GetBSPT returns iterators BSPT instance
+func (it *InOrderIterator) GetBSPT() *BStarPlusTree {
+	return it.bspt
 }
 
 // Next returns the next key in the BStarPlusTree
