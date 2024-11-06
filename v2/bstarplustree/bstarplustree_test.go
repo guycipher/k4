@@ -105,6 +105,56 @@ func TestBStarPlusTree_InsertRetrieve(t *testing.T) {
 	}
 }
 
+func TestBStarPlusTree_InsertRetrieveMany(t *testing.T) {
+	defer os.Remove("test.db")
+	// Create a temporary file for testing
+	file, err := os.Create("test.db")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(file.Name())
+
+	// Open the BStarPlusTree
+	tree, err := Open(file.Name(), os.O_RDWR|os.O_CREATE, 0644, 4, false)
+	if err != nil {
+		t.Fatalf("Failed to open BStarPlusTree: %v", err)
+	}
+	defer tree.Close()
+
+	// Insert 100 key-value pairs
+	for i := 0; i < 100; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		value := []byte(fmt.Sprintf("value%d", i))
+		err := tree.Put(key, value, nil)
+		if err != nil {
+			t.Fatalf("Failed to put key-value pair %d: %v", i, err)
+		}
+
+		//fmt.Println("TREE")
+		//tree.PrintTree()
+	}
+
+	// Retrieve and check the 100 key-value pairs
+	for i := 0; i < 100; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		expectedValue := []byte(fmt.Sprintf("value%d", i))
+		iter, err := tree.Get(key)
+		if err != nil {
+			t.Fatalf("Failed to get key %d: %v", i, err)
+		}
+		if !iter.HasNext() {
+			t.Fatalf("Expected to find key %d: %v", i, key)
+		}
+		retrievedValue, err := iter.Next()
+		if err != nil {
+			t.Fatalf("Failed to get next value for key %d: %v", i, err)
+		}
+		if !bytes.Equal(retrievedValue, expectedValue) {
+			t.Fatalf("Expected value %v, got %v for key %d", expectedValue, retrievedValue, i)
+		}
+	}
+}
+
 func TestBStarPlusTree_Reopen(t *testing.T) {
 	defer os.Remove("test.db")
 	// Create a temporary file for testing

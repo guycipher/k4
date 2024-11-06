@@ -134,7 +134,7 @@ func TestMemtableFlush(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 2764/2, 60, false, false)
+	k4, err := Open(dir, 2764/2, 600, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestMemtableFlush(t *testing.T) {
 		return
 	}
 
-	k4, err = Open(dir, 1024*1024, 2, false, false)
+	k4, err = Open(dir, 1024*1024, 600, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen K4: %v", err)
 	}

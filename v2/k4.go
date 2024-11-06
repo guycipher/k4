@@ -736,13 +736,14 @@ func (k4 *K4) compact() error {
 
 			}
 
+			// create a new iterator for sstable2
 			it2, err := bstarplustree.NewInOrderIterator(sstable2.bspt)
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to create iterator for SSTable2: %v", err))
 				return
 			}
 
-			// iterate over the keys in sstable1 and add them to the hashset
+			// iterate over the keys in sstable2 and add them to the hashset
 			for it2.HasNext() {
 				key, err := it2.Next()
 				if err != nil {
@@ -1120,8 +1121,9 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
+		var err error
 		sstable := sstablesCopy[i]
-		value, err := sstable.get(key)
+		value, err = sstable.get(key, -1)
 		if err != nil {
 			return nil, err
 		}
@@ -1138,26 +1140,37 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 }
 
 // get gets a key from the SSTable
-func (sstable *SSTable) get(key []byte) ([]byte, error) {
+func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 	// SStable pages are locked on read so no need to lock general sstable
 
-	lastPage := int(sstable.bspt.Pager.Count() - 1)
+	if lastPage == -1 {
+		lastPage = sstable.bspt.Pager.Count() - 1 // Get last page for hashset
+	}
 
 	// Read the hashset
-	hsData, err := sstable.bspt.Pager.GetPage(int64(lastPage))
+	hsData, err := sstable.bspt.Pager.GetPage(lastPage)
 	if err != nil {
 		return nil, err
 	}
 
 	hs, err := hashset.Deserialize(hsData)
 	if err != nil {
-		return nil, err
+		// if we cant deserialize go back another page
+
+		if lastPage-1 < 0 {
+			return nil, nil
+		}
+
+		return sstable.get(key, lastPage-1)
 	}
 
 	//Check if the key exists in the hashset
 	if !hs.Contains(key) {
+		fmt.Println("does not contain key")
 		return nil, nil
 	}
+
+	fmt.Println("possibly contains key")
 
 	// Iterate over SSTable
 	it, err := bstarplustree.NewInOrderIterator(sstable.bspt)
@@ -1166,6 +1179,7 @@ func (sstable *SSTable) get(key []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		if bytes.Equal(k.K, key) {
 			// check ttl
 			if k.TTL != nil {
