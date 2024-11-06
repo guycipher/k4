@@ -1283,26 +1283,44 @@ func (k4 *K4) NGet(key []byte) (*KeyValueArray, error) {
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		it := newSSTableIterator(sstable.pager, k4.compress)
-		for it.next() {
-			k, value, ttl := it.current()
-			if !bytes.Equal(k, key) && !bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+		sstIter, err := bstarplustree.NewInOrderIterator(sstable.bspt)
+		if err != nil {
+			return nil, err
+		}
+
+		// iterate over the keys in sstable1 and add them to the hashset
+		for sstIter.HasNext() {
+			k, err := sstIter.Next()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to iterate over SSTable1: %v", err))
+				return nil, err
+			}
+
+			keyIter := bstarplustree.NewKeyIterator(k, sstable.bspt)
+
+			for keyIter.HasNext() {
 				// check ttl
-				if ttl != nil {
-					if time.Now().After(*ttl) {
+				if k.TTL != nil {
+					if time.Now().After(*k.TTL) {
 						continue
 					}
+				}
+
+				value, err := keyIter.Next()
+				if err != nil {
+					break
 				}
 
 				if _, exists := result.binarySearch(key); !exists {
 
 					result.append(&KV{
-						Key:   k,
+						Key:   k.K,
 						Value: value,
 					})
 				}
 			}
 		}
+
 	}
 
 	return result, nil
