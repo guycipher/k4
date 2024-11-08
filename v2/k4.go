@@ -867,19 +867,6 @@ func (k4 *K4) compact() error {
 				hs.Add(key, pgN) // add key and page index to hashset
 			}
 
-			// close sstable1 and sstable2
-			err = sstable1.pager.Close()
-			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to close SSTable1: %v", err))
-				return
-			}
-
-			err = sstable2.pager.Close()
-			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to close SSTable2: %v", err))
-				return
-			}
-
 			// serialize the hashset
 			hsData, err := hs.Serialize()
 			if err != nil {
@@ -891,6 +878,19 @@ func (k4 *K4) compact() error {
 			_, err = newSstable.pager.Write(hsData)
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to write hashset to SSTable: %v", err))
+				return
+			}
+
+			// close sstable1 and sstable2
+			err = sstable1.pager.Close()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to close SSTable1: %v", err))
+				return
+			}
+
+			err = sstable2.pager.Close()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to close SSTable2: %v", err))
 				return
 			}
 
@@ -1223,7 +1223,7 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 	// Check SSTables
 	for i := len(sstablesCopy) - 1; i >= 0; i-- {
 		sstable := sstablesCopy[i]
-		value, err := sstable.get(key)
+		value, err := sstable.get(key, -1)
 		if err != nil {
 			return nil, err
 		}
@@ -1240,42 +1240,64 @@ func (k4 *K4) Get(key []byte) ([]byte, error) {
 }
 
 // get gets a key from the SSTable
-func (sstable *SSTable) get(key []byte) ([]byte, error) {
+func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 	// SStable pages are locked on read so no need to lock general sstable
 
-	// Read the hashset
-	hsData, err := sstable.pager.GetPage(0)
+	// Determine the last page if not provided
+	if lastPage == -1 {
+		lastPage = sstable.pager.Count() - 1 // Get last page for hashset
+	}
+
+	var hs *hashset.HashSet
+	var err error
+
+	// Try to decode the hashset from the final pages
+	for lastPage >= 0 {
+		hsData, err := sstable.pager.GetPage(lastPage)
+		if err != nil {
+			return nil, err
+		}
+
+		hs, err = hashset.Deserialize(hsData)
+		if err == nil {
+			break
+		}
+
+		lastPage--
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	hs, err := hashset.Deserialize(hsData)
-	if err != nil {
-		return nil, err
-	}
-
-	//Check if the key exists in the hashset
-	if !hs.Contains(key) {
+	// Check if the key exists in the hashset
+	exists, pg := hs.Contains(key)
+	if !exists {
 		return nil, nil
 	}
 
-	// Iterate over SSTable
-	it := newSSTableIterator(sstable.pager, sstable.compressed)
-	for it.next() {
-		k, v, ttl := it.current()
-		if bytes.Equal(k, key) {
-			// check ttl
-			if ttl != nil {
-				if time.Now().After(*ttl) {
-					return nil, nil
-				}
-			}
-
-			return v, nil
-		}
+	// Get the key value pair
+	data, err := sstable.pager.GetPage(pg)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, nil
+	// Deserialize the key value pair
+	_, v, ttl, err := deserializeKv(data)
+	if err != nil {
+		return nil, err
+	}
+
+	if ttl != nil && time.Now().After(*ttl) {
+		return nil, nil
+	}
+
+	// Check for tombstone value
+	if bytes.Equal(v, []byte(TOMBSTONE_VALUE)) {
+		return nil, nil
+	}
+
+	return v, nil
 }
 
 // Put puts a key-value pair into K4
