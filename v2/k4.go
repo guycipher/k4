@@ -813,38 +813,8 @@ func (k4 *K4) compact() error {
 			sstable1 := k4.sstables[i]
 			sstable2 := k4.sstables[i+1]
 
-			// create a new iterator for sstable1
-			it := newSSTableIterator(sstable1.pager, k4.compress)
-			for it.next() {
-				// iterate over the keys in sstable1 and add them to the hashset
-				key := it.currentKey()
-				hs.Add(key)
-			}
-
-			// create a new iterator for sstable2
-			it = newSSTableIterator(sstable2.pager, k4.compress)
-			for it.next() {
-				// iterate over the keys in sstable2 and add them to the hashset
-				key := it.currentKey()
-				hs.Add(key)
-			}
-
-			// serialize the hashset
-			hsData, err := hs.Serialize()
-			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to serialize hashset: %v", err))
-				return
-			}
-
-			// wrote hashset to initial sstable pages
-			_, err = newSstable.pager.Write(hsData)
-			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to write hashset to SSTable: %v", err))
-				return
-			}
-
 			// create a new iterator for sstable1 to add entries to the new sstable
-			it = newSSTableIterator(sstable1.pager, k4.compress)
+			it := newSSTableIterator(sstable1.pager, k4.compress)
 			for it.next() {
 				key, value, ttl := it.current()
 				if ttl != nil && time.Now().After(*ttl) { // if the key has expired we skip it
@@ -861,11 +831,13 @@ func (k4 *K4) compact() error {
 				}
 
 				data := serializeKv(key, value, ttl)
-				_, err := newSstable.pager.Write(data)
+				pgN, err := newSstable.pager.Write(data)
 				if err != nil {
 					k4.printLog(fmt.Sprintf("Failed to write key-value to SSTable: %v", err))
 					return
 				}
+
+				hs.Add(key, pgN) // add key and page index to hashset
 			}
 
 			// create a new iterator for sstable2 to add entries to the new sstable
@@ -885,12 +857,14 @@ func (k4 *K4) compact() error {
 					}
 				}
 
-				data := serializeKv(key, value, ttl)   // serialize key-value pair
-				_, err := newSstable.pager.Write(data) // write to new sstable
+				data := serializeKv(key, value, ttl)     // serialize key-value pair
+				pgN, err := newSstable.pager.Write(data) // write to new sstable
 				if err != nil {
 					k4.printLog(fmt.Sprintf("Failed to write key-value to SSTable: %v", err))
 					return
 				}
+
+				hs.Add(key, pgN) // add key and page index to hashset
 			}
 
 			// close sstable1 and sstable2
@@ -903,6 +877,20 @@ func (k4 *K4) compact() error {
 			err = sstable2.pager.Close()
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to close SSTable2: %v", err))
+				return
+			}
+
+			// serialize the hashset
+			hsData, err := hs.Serialize()
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to serialize hashset: %v", err))
+				return
+			}
+
+			// write hashset to final sstable pages
+			_, err = newSstable.pager.Write(hsData)
+			if err != nil {
+				k4.printLog(fmt.Sprintf("Failed to write hashset to SSTable: %v", err))
 				return
 			}
 
