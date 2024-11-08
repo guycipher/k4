@@ -35,9 +35,9 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/guycipher/k4/compressor"
-	"github.com/guycipher/k4/hashset"
 	"github.com/guycipher/k4/pager"
 	"github.com/guycipher/k4/skiplist"
+	"github.com/guycipher/k4/v2/hashset"
 	"log"
 	"os"
 	"sort"
@@ -525,35 +525,6 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// create a hashset
 	hs := hashset.NewHashSet()
 
-	// add all the keys to the hashset
-	for it.Next() {
-
-		// get the current key and value
-		key, val, _ := it.Current()
-		if key == nil {
-			continue
-		}
-
-		// Check if tombstone
-		if bytes.Equal(val, []byte(TOMBSTONE_VALUE)) {
-			continue // skip tombstones
-		}
-
-		hs.Add(key) // add key to hash set
-	}
-
-	// serialize the hashset
-	hsData, err := hs.Serialize()
-	if err != nil {
-		return err
-	}
-
-	// Write the hashset to the intitial pages of SSTable
-	_, err = sstable.pager.Write(hsData)
-	if err != nil {
-		return err
-	}
-
 	// We create another iterator to write the key value pairs to the sstable
 	it = skiplist.NewIterator(memtable)
 
@@ -584,11 +555,25 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		}
 
 		// Write to SSTable
-		_, err := sstable.pager.Write(data)
+		pgN, err := sstable.pager.Write(data)
 		if err != nil {
 			return err
 		}
 
+		hs.Add(key, pgN) // add key, and page index to hash set
+
+	}
+
+	// serialize the hashset
+	hsData, err := hs.Serialize()
+	if err != nil {
+		return err
+	}
+
+	// Write the hashset to the final pages of SSTable
+	_, err = sstable.pager.Write(hsData)
+	if err != nil {
+		return err
 	}
 
 	// We only lock sstables array when we are appending a new sstable
