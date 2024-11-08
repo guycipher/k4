@@ -1247,3 +1247,50 @@ func TestCompactionTTL(t *testing.T) {
 
 	}
 }
+
+func TestCompressCompaction(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 12196/4, 2, true, true)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+
+	for i := 0; i < 500; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		err = k4.Put(key, value, nil)
+		if err != nil {
+			k4.Close()
+			t.Fatalf("Failed to put key-value: %v", err)
+		}
+
+	}
+
+	time.Sleep(8 * time.Second)
+
+	k4.Close()
+
+	k4, err = Open(dir, 1024*1024, 2, false, true)
+	if err != nil {
+		t.Fatalf("Failed to reopen K4: %v", err)
+	}
+	defer k4.Close()
+
+	// get all keys
+	for i := 0; i < 500; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		got, err := k4.Get(key)
+		if err != nil {
+			t.Fatalf("Failed to get key: %v", err)
+		}
+
+		if !bytes.Equal(got, value) {
+			t.Fatalf("Expected value %s, got %s", value, got)
+		}
+	}
+}
