@@ -40,11 +40,11 @@ import (
 
 // BloomFilter is the main struct for the bloom filter package
 type BloomFilter struct {
-	bitArray    []bool                // Bit array to store the bloom filter
-	hashFuncs   []func([]byte) uint32 // Hash functions
-	keyIndexMap map[string]int64      // Map to store key-index pairs
-	count       int                   // Number of keys in the bloom filter
-	threshold   int                   // Threshold for resizing the bloom filter
+	bitArray     []bool                // Bit array to store the bloom filter
+	hashFuncs    []func([]byte) uint32 // Hash functions
+	hashIndexMap map[uint32]int64      // Map to store hash-index pairs
+	count        int                   // Number of keys in the bloom filter
+	threshold    int                   // Threshold for resizing the bloom filter
 }
 
 // New creates a new BloomFilter with the given size and number of hash functions
@@ -59,10 +59,10 @@ func New(size int, numHashFuncs int) *BloomFilter {
 		}
 	}
 	return &BloomFilter{
-		bitArray:    make([]bool, size),
-		hashFuncs:   hashFuncs,
-		keyIndexMap: make(map[string]int64),
-		threshold:   size * 2,
+		bitArray:     make([]bool, size),
+		hashFuncs:    hashFuncs,
+		hashIndexMap: make(map[uint32]int64),
+		threshold:    size * 2,
 	}
 }
 
@@ -74,22 +74,25 @@ func (bf *BloomFilter) Add(key []byte, index int64) {
 	}
 	// Add the key to the bloom filter
 	for _, hashFunc := range bf.hashFuncs {
-		position := hashFunc(key) % uint32(len(bf.bitArray))
+		hash := hashFunc(key)
+		position := hash % uint32(len(bf.bitArray))
 		bf.bitArray[position] = true
+		bf.hashIndexMap[hash] = index // Add the hash to the hash-index map
 	}
-	bf.keyIndexMap[string(key)] = index // Add the key to the key-index map
 	bf.count++
 }
 
 // Check checks if a key exists in the bloom filter
 func (bf *BloomFilter) Check(key []byte) (bool, int64) {
+	var hash uint32
 	for _, hashFunc := range bf.hashFuncs { // Iterate over the hash functions
-		position := hashFunc(key) % uint32(len(bf.bitArray))
+		hash = hashFunc(key)
+		position := hash % uint32(len(bf.bitArray))
 		if !bf.bitArray[position] {
 			return false, -1
 		}
 	}
-	index, exists := bf.keyIndexMap[string(key)] // Check if the key exists in the key-index map
+	index, exists := bf.hashIndexMap[hash] // Check if the hash exists in the hash-index map
 	return exists, index
 }
 
@@ -98,9 +101,9 @@ func (bf *BloomFilter) resize() {
 	newSize := len(bf.bitArray) * 2 // Double the size of the bit array
 	newBitArray := make([]bool, newSize)
 	// Rehash the keys
-	for key := range bf.keyIndexMap {
-		for _, hashFunc := range bf.hashFuncs {
-			position := hashFunc([]byte(key)) % uint32(newSize)
+	for hash := range bf.hashIndexMap {
+		for range bf.hashFuncs {
+			position := hash % uint32(newSize)
 			newBitArray[position] = true
 		}
 	}
@@ -129,17 +132,13 @@ func (bf *BloomFilter) Serialize() ([]byte, error) {
 		}
 	}
 
-	// Serialize KeyIndexMap
-	keyIndexMapSize := int32(len(bf.keyIndexMap))
-	if err := binary.Write(&buf, binary.LittleEndian, keyIndexMapSize); err != nil {
+	// Serialize HashIndexMap
+	hashIndexMapSize := int32(len(bf.hashIndexMap))
+	if err := binary.Write(&buf, binary.LittleEndian, hashIndexMapSize); err != nil {
 		return nil, err
 	}
-	for key, index := range bf.keyIndexMap {
-		keyLen := int32(len(key))
-		if err := binary.Write(&buf, binary.LittleEndian, keyLen); err != nil {
-			return nil, err
-		}
-		if _, err := buf.WriteString(key); err != nil {
+	for hash, index := range bf.hashIndexMap {
+		if err := binary.Write(&buf, binary.LittleEndian, hash); err != nil {
 			return nil, err
 		}
 		if err := binary.Write(&buf, binary.LittleEndian, index); err != nil {
@@ -180,32 +179,25 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 		bf.bitArray[i] = b == 1
 	}
 
-	// Deserialize KeyIndexMap
-	var keyIndexMapSize int32
-	if err := binary.Read(buf, binary.LittleEndian, &keyIndexMapSize); err != nil {
+	// Deserialize HashIndexMap
+	var hashIndexMapSize int32
+	if err := binary.Read(buf, binary.LittleEndian, &hashIndexMapSize); err != nil {
 		return nil, err
 	}
-	if keyIndexMapSize < 0 || keyIndexMapSize > 1<<20 {
-		return nil, errors.New("invalid key index map size")
+	if hashIndexMapSize < 0 || hashIndexMapSize > 1<<20 {
+		return nil, errors.New("invalid hash index map size")
 	}
-	bf.keyIndexMap = make(map[string]int64, keyIndexMapSize)
-	for i := int32(0); i < keyIndexMapSize; i++ {
-		var keyLen int32
-		if err := binary.Read(buf, binary.LittleEndian, &keyLen); err != nil {
-			return nil, err
-		}
-		if keyLen < 0 || keyLen > 1<<20 {
-			return nil, errors.New("invalid key length")
-		}
-		key := make([]byte, keyLen)
-		if _, err := buf.Read(key); err != nil {
+	bf.hashIndexMap = make(map[uint32]int64, hashIndexMapSize)
+	for i := int32(0); i < hashIndexMapSize; i++ {
+		var hash uint32
+		if err := binary.Read(buf, binary.LittleEndian, &hash); err != nil {
 			return nil, err
 		}
 		var index int64
 		if err := binary.Read(buf, binary.LittleEndian, &index); err != nil {
 			return nil, err
 		}
-		bf.keyIndexMap[string(key)] = index
+		bf.hashIndexMap[hash] = index
 	}
 
 	// Deserialize Count and Threshold
