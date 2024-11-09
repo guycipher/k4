@@ -44,7 +44,7 @@ struct KeyValuePairArray {
 */
 import "C"
 import (
-	"github.com/guycipher/k4"
+	"github.com/guycipher/k4/v2"
 	"runtime/cgo"
 	"time"
 	"unsafe"
