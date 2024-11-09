@@ -1,4 +1,6 @@
-github.com/guycipher/k4 v1.9.5 h1:Gec8ut1BlcHTbDD3AEvo2Gm/j/N2DHlIJNnmzl6xI6Y=
-github.com/guycipher/k4 v1.9.5/go.mod h1:j1faqUqiDiz9I7Qiu/2l5BjeRzkk/CssoDNm8pG4g8g=
 github.com/guycipher/k4 v1.9.7 h1:elWXP9hB8XAvyXIUPRtr/0DVzGuZJGJAFzaCoRPY98o=
 github.com/guycipher/k4 v1.9.7/go.mod h1:j1faqUqiDiz9I7Qiu/2l5BjeRzkk/CssoDNm8pG4g8g=
+github.com/guycipher/k4/v2 v2.1.1 h1:VLqvBDF9JvRJAcqD0qUvy4rZ2JxqZj17ziavesYEsAc=
+github.com/guycipher/k4/v2 v2.1.1/go.mod h1:97sG2QHxtszTHCJFtS/DThKITDSWIBkEz7mC0DGWLUM=
+github.com/guycipher/k4/v2 v2.1.2 h1:qHxHBNxP3FgawwiNWYAB3ptmTefYSDPrvSc2KfNEbNQ=
+github.com/guycipher/k4/v2 v2.1.2/go.mod h1:chF/U//rx6YgoD3+SsShWekwI24XCA6PiJHzNavabFM=

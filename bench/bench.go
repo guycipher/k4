@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/guycipher/k4"
+	"github.com/guycipher/k4/v2"
 	"log"
 	"math/rand"
 	"os"

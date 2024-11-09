@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/guycipher/k4"
+	"github.com/guycipher/k4/v2"
 	"log"
 	"net"
 	"os"
