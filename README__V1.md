@@ -35,12 +35,12 @@ More detailed benchmarks can be found in [here](https://github.com/guycipher/k4/
 - Configurable compaction interval (in seconds)
 - Configurable logging
 - Configurable skip list (max level and probability)
-- Optimized bloom filter for faster lookups.  SSTable final pages contain a bloom filter.  The bloom filter check returns a page index if key is found.
+- Optimized hashset for faster lookups.  SSTable initial pages contain a hashset.  The system uses the hashset to determine if a key is in the SSTable before scanning the SSTable.
 - Recovery from WAL
 - Granular page locking (sstables on scan are locked granularly)
 - Thread-safe (multiple readers, single writer)
 - TTL support (time to live).  Keys can be set to expire after a certain time duration.
-- Murmur3 inspired hashing on compression and bloom filter
+- Murmur3 inspired hashing on compression and hash set
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - Background flushing and compaction operations for less blocking on read and write operations
 - Easy intuitive API(Get, Put, Delete, Range, NRange, GreaterThan, GreaterThanEq, LessThan, LessThanEq, NGet)
@@ -69,46 +69,46 @@ This is **GO** code that demonstrates how to use K4.  The code is simple and dem
 
 ```go
 import (
-    "github.com/guycipher/k4"
-    "log"
+"github.com/guycipher/k4"
+"log"
 )
 
 func main() {
-    var err error
-    directory := "./data"
-    memtableFlushThreshold := (1024 * 1024) * 5 // 5MB
-    compactionInterval := 3600 // 1 hour
-    logging := true
-    compression := false
+var err error
+directory := "./data"
+memtableFlushThreshold := (1024 * 1024) * 5 // 5MB
+compactionInterval := 3600 // 1 hour
+logging := true
+compression := false
 
-    db, err := k4.Open(directory, memtableFlushThreshold, compactionInterval, logging, compression)
-    if err != nil {
-        log.Fatalf("Failed to open K4: %v", err)
-    }
+db, err := k4.Open(directory, memtableFlushThreshold, compactionInterval, logging, compression)
+if err != nil {
+log.Fatalf("Failed to open K4: %v", err)
+}
 
-    defer db.Close()
+defer db.Close()
 
 
-    // Put
-    // Putting the same key will update the value
-    key := []byte("key")
-    value := []byte("value")
-    err = db.Put(key, value, nil)
-    if err != nil {
-        log.Fatalf("Failed to put key: %v", err)
-    }
+// Put
+// Putting the same key will update the value
+key := []byte("key")
+value := []byte("value")
+err = db.Put(key, value, nil)
+if err != nil {
+log.Fatalf("Failed to put key: %v", err)
+}
 
-    // Get
-    value, err = db.Get(key)
-    if err != nil {
-        log.Fatalf("Failed to get key: %v", err)
-    }
+// Get
+value, err = db.Get(key)
+if err != nil {
+log.Fatalf("Failed to get key: %v", err)
+}
 
-    // Delete
-    err = db.Delete(key)
-    if err != nil {
-        log.Fatalf("Failed to get key: %v", err)
-    }
+// Delete
+err = db.Delete(key)
+if err != nil {
+log.Fatalf("Failed to get key: %v", err)
+}
 }
 ```
 
@@ -121,16 +121,16 @@ Will iterate over key-value pairs in memtable then sstables.
 it := NewIterator(db)
 
 for  {
-    key, value := it.Next()
-    if key == nil {
-        break
-    }
+key, value := it.Next()
+if key == nil {
+break
+}
 
-    // .. You can also go back if you want
-    key, value = it.Prev()
-    if key == nil {
-        break
-    }
+// .. You can also go back if you want
+key, value = it.Prev()
+if key == nil {
+break
+}
 }
 
 ```
@@ -163,25 +163,25 @@ If you have a populated WAL file in the data directory but no data files aka sst
 #### Example
 ```go
 func main() {
-    directory := "./data"
-    memtableFlushThreshold := 1024 * 1024 // 1MB
-    compactionInterval := 3600 // 1 hour
-    logging := true
-    compression := false
+directory := "./data"
+memtableFlushThreshold := 1024 * 1024 // 1MB
+compactionInterval := 3600 // 1 hour
+logging := true
+compression := false
 
-    db, err := k4.Open(directory, memtableFlushThreshold, compactionInterval, logging, compression)
-    if err != nil {
-        log.Fatalf("Failed to open K4: %v", err)
-    }
+db, err := k4.Open(directory, memtableFlushThreshold, compactionInterval, logging, compression)
+if err != nil {
+log.Fatalf("Failed to open K4: %v", err)
+}
 
-    defer db.Close()
+defer db.Close()
 
-    err := db.RecoverFromWAL()
-    if err != nil {
-        ..
-    }
+err := db.RecoverFromWAL()
+if err != nil {
+..
+}
 
-    // Continue as normal
+// Continue as normal
 }
 ```
 
@@ -195,7 +195,7 @@ ttl :=  6 * time.Second
 
 err = db.Put(key, value, ttl)
 if err != nil {
-    ..
+..
 ..
 
 ```
