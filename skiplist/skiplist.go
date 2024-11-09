@@ -34,6 +34,7 @@ import (
 	"bytes"
 	"math/rand"
 	"time"
+	"unsafe"
 )
 
 const TOMBSTONE_VALUE = "$tombstone" // This is specific to k4
@@ -87,7 +88,12 @@ func NewNode(level int, key, value []byte, ttl *time.Duration) *Node {
 
 // Size returns the size of the node in bytes
 func (n *Node) Size() int {
-	return len(n.key) + len(n.value) + len(n.forward)*8 // assuming 64-bit pointers
+	size := len(n.key) + len(n.value) + len(n.forward)*int(unsafe.Sizeof(uintptr(0)))
+	if n.ttl != nil {
+		size += int(unsafe.Sizeof(*n.ttl))
+	}
+
+	return size
 }
 
 // IsExpired checks if the node is expired

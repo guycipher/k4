@@ -1303,7 +1303,7 @@ func TestCompressCompaction(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 12196/4, 2, true, true)
+	k4, err := Open(dir, 12196/4, 3000, true, true)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -1320,7 +1320,7 @@ func TestCompressCompaction(t *testing.T) {
 
 	}
 
-	time.Sleep(8 * time.Second)
+	k4.compact() // now we will compact and close
 
 	k4.Close()
 

@@ -1166,7 +1166,7 @@ func (txn *Transaction) Commit(k4 *K4) error {
 	}
 
 	// Check if memtable needs to be flushed
-	if k4.memtable.Size() > k4.memtableFlushThreshold {
+	if k4.memtable.Size() >= k4.memtableFlushThreshold {
 		k4.appendMemtableToFlushQueue() // Append memtable to flush queue
 	}
 
@@ -1369,7 +1369,7 @@ func (k4 *K4) Put(key, value []byte, ttl *time.Duration) error {
 	k4.memtable.Insert(key, value, ttl) // insert the key value pair into the memtable
 
 	// Check if memtable needs to be flushed
-	if k4.memtable.Size() > k4.memtableFlushThreshold {
+	if k4.memtable.Size() >= k4.memtableFlushThreshold {
 		k4.appendMemtableToFlushQueue()
 	}
 
@@ -2064,4 +2064,21 @@ func (it *Iterator) Reset() {
 
 	it.prevStarted = false // We reset the prevStarted to false
 
+}
+
+// EscalateFlush is a public method to force flush memtable to queue
+func (k4 *K4) EscalateFlush() error {
+	// Lock the memtable
+	k4.memtableLock.Lock()
+	defer k4.memtableLock.Unlock()
+
+	// Append memtable to flush queue
+	k4.appendMemtableToFlushQueue()
+
+	return nil
+}
+
+// EscalateCompaction is a public method to force compaction
+func (k4 *K4) EscalateCompaction() error {
+	return k4.compact()
 }

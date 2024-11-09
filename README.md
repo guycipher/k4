@@ -272,6 +272,13 @@ func (txn *Transaction) Commit(k4 *K4) error
 // Recover from WAL file
 // WAL file must be placed in the data directory
 func (k4 *K4) RecoverFromWAL() error
+
+// EscalateFlush escalates the memtable flush to the background queue
+func (k4 *K4) EscalateFlush() error
+
+// EscalateCompaction escalates a compaction operation
+func (k4 *K4) EscalateCompaction() error
+
 ```
 
 ### What can you build with K4?
