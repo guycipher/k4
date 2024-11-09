@@ -51,6 +51,8 @@ const WAL_EXTENSION = ".wal"                     // The write ahead log file ext
 const TOMBSTONE_VALUE = "$tombstone"             // The tombstone value
 const COMPRESSION_WINDOW_SIZE = 1024 * 32        // The compression window size
 const BACKGROUND_OP_SLEEP = 5 * time.Microsecond // The background sleep time for the background operations
+const INITIAL_BLOOM_FILTER_SIZE = 100            // The initial size of the bloom filter
+const BLOOM_FILTER_HASHES = 4                    // The number of hashes for the bloom filter
 
 // K4 is the main structure for the k4 database
 type K4 struct {
@@ -523,7 +525,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// then we will add the key value pairs to the sstable
 
 	// create a bloom filter
-	bf := bloomfilter.New(100, 4)
+	bf := bloomfilter.New(INITIAL_BLOOM_FILTER_SIZE, BLOOM_FILTER_HASHES)
 
 	// We create another iterator to write the key value pairs to the sstable
 	it = skiplist.NewIterator(memtable)
@@ -800,7 +802,7 @@ func (k4 *K4) compact() error {
 		go func(i int, sstablesToRemove *[]int, newSStables *[]*SSTable, routinesLock *sync.Mutex) {
 			defer wg.Done() // defer completion of goroutine
 
-			bf := bloomfilter.New(100, 4) // create a new hashset
+			bf := bloomfilter.New(INITIAL_BLOOM_FILTER_SIZE, BLOOM_FILTER_HASHES) // create a new hashset
 
 			// create a new sstable
 			newSstable, err := k4.createSSTableNoLock()
@@ -1268,6 +1270,10 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	if bf == nil {
+		return nil, nil
 	}
 
 	// Check if the key exists in the hashset
