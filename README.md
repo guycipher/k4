@@ -2,7 +2,7 @@
     <h1 align="left"><img width="88" src="graphics/k4-v2.png"></h1>
 </div>
 
-K4 is an open-source, high-performance, transactional, and durable storage engine based on an LSM (Log-Structured Merge) tree architecture. This design optimizes high-speed writes, making it ideal for modern data-intensive applications.
+K4 is an open-source, high-performance, transactional, and durable storage engine based on an LSM (Log-Structured Merge) tree architecture. This design optimizes high-speed writes and reads, making it ideal for modern data-intensive applications.
 
 ### Benchmarks
 ```
@@ -23,7 +23,7 @@ Both engines were used with default settings and similar configurations.
 More detailed benchmarks can be found in [here](https://github.com/guycipher/k4/tree/main/bench)
 
 ### Features
-- High speed writes.  Reads are also fast but writes are the primary focus.
+- High speed writes and reads.
 - Durability
 - Optimized for RAM and flash storage (SSD)
 - Variable length binary keys and values.  Keys and their values can be any size that paired don't exceed available memory at time of operation.
