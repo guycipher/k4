@@ -51,7 +51,7 @@ const WAL_EXTENSION = ".wal"                     // The write ahead log file ext
 const TOMBSTONE_VALUE = "$tombstone"             // The tombstone value
 const COMPRESSION_WINDOW_SIZE = 1024 * 32        // The compression window size
 const BACKGROUND_OP_SLEEP = 5 * time.Microsecond // The background sleep time for the background operations
-const INITIAL_BLOOM_FILTER_SIZE = 100            // The initial size of the bloom filter
+const INITIAL_BLOOM_FILTER_SIZE = 10             // The initial size of the bloom filter
 const BLOOM_FILTER_HASHES = 4                    // The number of hashes for the bloom filter
 
 // K4 is the main structure for the k4 database
@@ -1296,7 +1296,7 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 			return nil, err
 		}
 
-		bf, err = bloomfilter.Deserialize(bfData)
+		bf, err = bloomfilter.Deserialize(bfData, BLOOM_FILTER_HASHES)
 		if err == nil {
 			break
 		}

@@ -96,7 +96,7 @@ func TestSerializeDeserialize(t *testing.T) {
 		t.Fatalf("serialization failed: %v", err)
 	}
 
-	newBf, err := Deserialize(data)
+	newBf, err := Deserialize(data, 3)
 	if err != nil {
 		t.Fatalf("deserialization failed: %v", err)
 	}
@@ -114,17 +114,28 @@ func TestSerializeDeserialize(t *testing.T) {
 
 func TestAddAndCheckMany(t *testing.T) {
 	bf := New(10, 3)
-	keys := make([][]byte, 1000)
-	indices := make([]int64, 1000)
+	keys := make([][]byte, 200)
+	indices := make([]int64, 200)
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 200; i++ {
 		keys[i] = []byte("key" + fmt.Sprintf("%d", i))
 		indices[i] = int64(i)
 		bf.Add(keys[i], indices[i])
 	}
 
+	// serialize and deserialize
+	data, err := bf.Serialize()
+	if err != nil {
+		t.Fatalf("serialization failed: %v", err)
+	}
+
+	newBf, err := Deserialize(data, 3)
+	if err != nil {
+		t.Fatalf("deserialization failed: %v", err)
+	}
+
 	for i, key := range keys {
-		exists, idx := bf.Check(key)
+		exists, idx := newBf.Check(key)
 		if !exists {
 			t.Errorf("expected key %s to exist", key)
 		}

@@ -28,7 +28,6 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 package bloomfilter
 
 import (
@@ -84,16 +83,18 @@ func (bf *BloomFilter) Add(key []byte, index int64) {
 
 // Check checks if a key exists in the bloom filter
 func (bf *BloomFilter) Check(key []byte) (bool, int64) {
-	var hash uint32
 	for _, hashFunc := range bf.hashFuncs { // Iterate over the hash functions
-		hash = hashFunc(key)
+		hash := hashFunc(key)
 		position := hash % uint32(len(bf.bitArray))
 		if !bf.bitArray[position] {
 			return false, -1
 		}
+		index, exists := bf.hashIndexMap[hash] // Check if the hash exists in the hash-index map
+		if exists {
+			return true, index
+		}
 	}
-	index, exists := bf.hashIndexMap[hash] // Check if the hash exists in the hash-index map
-	return exists, index
+	return false, -1
 }
 
 // resize resizes the bloom filter
@@ -102,10 +103,8 @@ func (bf *BloomFilter) resize() {
 	newBitArray := make([]bool, newSize)
 	// Rehash the keys
 	for hash := range bf.hashIndexMap {
-		for range bf.hashFuncs {
-			position := hash % uint32(newSize)
-			newBitArray[position] = true
-		}
+		position := hash % uint32(newSize)
+		newBitArray[position] = true
 	}
 	bf.bitArray = newBitArray
 	bf.threshold = newSize * 2
@@ -157,8 +156,19 @@ func (bf *BloomFilter) Serialize() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Ensure hash functions are reinitialized after deserialization
+func (bf *BloomFilter) reinitializeHashFuncs(numHashFuncs int) {
+	bf.hashFuncs = make([]func([]byte) uint32, numHashFuncs)
+	for i := 0; i < numHashFuncs; i++ {
+		seed := uint32(i)
+		bf.hashFuncs[i] = func(data []byte) uint32 {
+			return murmur.Hash32(data, seed)
+		}
+	}
+}
+
 // Deserialize deserializes the bloom filter
-func Deserialize(data []byte) (*BloomFilter, error) {
+func Deserialize(data []byte, numHashFuncs int) (*BloomFilter, error) {
 	buf := bytes.NewBuffer(data)
 	bf := &BloomFilter{}
 
@@ -210,6 +220,9 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 	}
 	bf.count = int(count)
 	bf.threshold = int(threshold)
+
+	// Reinitialize hash functions
+	bf.reinitializeHashFuncs(numHashFuncs)
 
 	return bf, nil
 }
