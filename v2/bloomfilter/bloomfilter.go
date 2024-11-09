@@ -34,6 +34,7 @@ package bloomfilter
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"github.com/guycipher/k4/murmur"
 )
 
@@ -167,6 +168,9 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 	if err := binary.Read(buf, binary.LittleEndian, &bitArraySize); err != nil {
 		return nil, err
 	}
+	if bitArraySize < 0 || bitArraySize > 1<<20 { // Add reasonable limit
+		return nil, errors.New("invalid bit array size")
+	}
 	bf.bitArray = make([]bool, bitArraySize)
 	for i := int32(0); i < bitArraySize; i++ {
 		b, err := buf.ReadByte()
@@ -181,11 +185,17 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 	if err := binary.Read(buf, binary.LittleEndian, &keyIndexMapSize); err != nil {
 		return nil, err
 	}
+	if keyIndexMapSize < 0 || keyIndexMapSize > 1<<20 {
+		return nil, errors.New("invalid key index map size")
+	}
 	bf.keyIndexMap = make(map[string]int64, keyIndexMapSize)
 	for i := int32(0); i < keyIndexMapSize; i++ {
 		var keyLen int32
 		if err := binary.Read(buf, binary.LittleEndian, &keyLen); err != nil {
 			return nil, err
+		}
+		if keyLen < 0 || keyLen > 1<<20 {
+			return nil, errors.New("invalid key length")
 		}
 		key := make([]byte, keyLen)
 		if _, err := buf.Read(key); err != nil {

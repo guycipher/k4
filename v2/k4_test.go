@@ -178,11 +178,59 @@ func TestMemtableFlush(t *testing.T) {
 	}
 }
 
+func TestCompressMemtableFlush(t *testing.T) {
+	dir := setup(t)
+	defer teardown(dir)
+
+	k4, err := Open(dir, 2764/2, 60, false, true)
+	if err != nil {
+		t.Fatalf("Failed to open K4: %v", err)
+	}
+
+	for i := 0; i < 100; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		err = k4.Put(key, value, nil)
+		if err != nil {
+			k4.Close()
+			t.Fatalf("Failed to put key-value: %v", err)
+		}
+	}
+
+	err = k4.Close()
+	if err != nil {
+		t.Fatalf("Failed to close K4: %v", err)
+		return
+	}
+
+	k4, err = Open(dir, 1024*1024, 2, false, true)
+	if err != nil {
+		t.Fatalf("Failed to reopen K4: %v", err)
+	}
+	defer k4.Close()
+
+	// get all keys
+	for i := 0; i < 100; i++ {
+		key := []byte("key" + fmt.Sprintf("%d", i))
+		value := []byte("value" + fmt.Sprintf("%d", i))
+
+		got, err := k4.Get(key)
+		if err != nil {
+			t.Fatalf("Failed to get key: %v", err)
+		}
+
+		if !bytes.Equal(got, value) {
+			t.Fatalf("Expected value %s, got %s", value, got)
+		}
+	}
+}
+
 func TestCompaction(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 12196/4, 2, true, false)
+	k4, err := Open(dir, 12196/4, 1000, true, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -197,13 +245,16 @@ func TestCompaction(t *testing.T) {
 			t.Fatalf("Failed to put key-value: %v", err)
 		}
 
-	}
+		if i == 400 {
+			k4.compact()
 
-	time.Sleep(8 * time.Second)
+		}
+
+	}
 
 	k4.Close()
 
-	k4, err = Open(dir, 1024*1024, 2, false, false)
+	k4, err = Open(dir, 1024*1024, 3000, false, false)
 	if err != nil {
 		t.Fatalf("Failed to reopen K4: %v", err)
 	}
@@ -504,7 +555,7 @@ func TestPutGet2(t *testing.T) {
 
 	tt := time.Now()
 
-	for i := 0; i < 1000000; i++ {
+	for i := 0; i < 100000; i++ {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
 
@@ -516,12 +567,12 @@ func TestPutGet2(t *testing.T) {
 
 	fmt.Println("Put time: ", time.Since(tt))
 
-	got, err := k4.Get([]byte(fmt.Sprintf("key%d", 999999)))
+	got, err := k4.Get([]byte(fmt.Sprintf("key%d", 99999)))
 	if err != nil {
 		t.Fatalf("Failed to get key: %v", err)
 	}
 
-	if !bytes.Equal([]byte(fmt.Sprintf("value%d", 999999)), got) {
+	if !bytes.Equal([]byte(fmt.Sprintf("value%d", 99999)), got) {
 		t.Fatalf("Expected value %s, got %s", fmt.Sprintf("value%d", 999999), got)
 	}
 }

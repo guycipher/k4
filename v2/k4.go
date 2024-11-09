@@ -520,24 +520,24 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// Create a new skiplist iterator
 	it := skiplist.NewIterator(memtable)
 
-	// first we will create a hashset which will be on initial pages of sstable
-	// we will add all the keys to the hashset
-	// then we will add the key value pairs to the sstable
-
 	// create a bloom filter
 	bf := bloomfilter.New(INITIAL_BLOOM_FILTER_SIZE, BLOOM_FILTER_HASHES)
 
 	// We create another iterator to write the key value pairs to the sstable
 	it = skiplist.NewIterator(memtable)
 
+	// Iterate through the memtable
 	for it.Next() {
 		key, value, ttl := it.Current()
 		if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
 			continue // skip tombstones
 		}
 
+		var beforeCompressionKey []byte
+
 		// Check for compression
 		if k4.compress {
+			beforeCompressionKey = key
 
 			key, value, err = compressKeyValue(key, value) // compress key and value
 			if err != nil {
@@ -562,7 +562,11 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 			return err
 		}
 
-		bf.Add(key, pgN) // add key, and page index to hash set
+		if k4.compress {
+			bf.Add(beforeCompressionKey, pgN) // add key, and page index to bloom filter
+		} else {
+			bf.Add(key, pgN) // add key, and page index to bloom filter
+		}
 
 	}
 
@@ -572,7 +576,7 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		return err
 	}
 
-	// Write the hashset to the final pages of SSTable
+	// Write the bloom filter to the final pages of SSTable
 	_, err = sstable.pager.Write(bfData)
 	if err != nil {
 		return err
@@ -637,7 +641,7 @@ func sstableFilename(index int) string {
 func newSSTableIterator(pager *pager.Pager, compressed bool) *SSTableIterator {
 	return &SSTableIterator{
 		pager:       pager,                  // the pager for the sstable file
-		currentPage: 0,                      // skip the first page which is the hashset
+		currentPage: -1,                     // start at initial page
 		lastPage:    int(pager.Count() - 1), // the last page in the sstable
 		compressed:  compressed,             // whether the sstable is compressed
 	}
@@ -823,8 +827,11 @@ func (k4 *K4) compact() error {
 					continue
 				}
 
+				var beforeCompressionKey []byte
+
 				// Check for compression
 				if k4.compress {
+					beforeCompressionKey = key
 					key, value, err = compressKeyValue(key, value) // compress key and value
 					if err != nil {
 						k4.printLog(fmt.Sprintf("Failed to compress key-value: %v", err))
@@ -848,7 +855,11 @@ func (k4 *K4) compact() error {
 					return
 				}
 
-				bf.Add(key, pgN) // add key and page index to hashset
+				if k4.compress {
+					bf.Add(beforeCompressionKey, pgN) // add key, and page index to bloom filter
+				} else {
+					bf.Add(key, pgN) // add key, and page index to bloom filter
+				}
 			}
 
 			// create a new iterator for sstable2 to add entries to the new sstable
@@ -859,8 +870,11 @@ func (k4 *K4) compact() error {
 					continue
 				}
 
+				var beforeCompressionKey []byte
+
 				// Check for compression
 				if k4.compress {
+					beforeCompressionKey = key
 					key, value, err = compressKeyValue(key, value) // compress key and value
 					if err != nil {
 						k4.printLog(fmt.Sprintf("Failed to compress key-value: %v", err))
@@ -884,20 +898,24 @@ func (k4 *K4) compact() error {
 					return
 				}
 
-				bf.Add(key, pgN) // add key and page index to hashset
+				if k4.compress {
+					bf.Add(beforeCompressionKey, pgN) // add key, and page index to bloom filter
+				} else {
+					bf.Add(key, pgN) // add key, and page index to bloom filter
+				}
 			}
 
 			// serialize the bloom filter
 			bfData, err := bf.Serialize()
 			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to serialize hashset: %v", err))
+				k4.printLog(fmt.Sprintf("Failed to serialize bloom filter: %v", err))
 				return
 			}
 
 			// write bloom filter to final sstable pages
 			_, err = newSstable.pager.Write(bfData)
 			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to write hashset to SSTable: %v", err))
+				k4.printLog(fmt.Sprintf("Failed to write bloom filter to SSTable: %v", err))
 				return
 			}
 
@@ -1265,13 +1283,13 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 
 	// Determine the last page if not provided
 	if lastPage == -1 {
-		lastPage = sstable.pager.Count() - 1 // Get last page for hashset
+		lastPage = sstable.pager.Count() - 1 // Get last page for bloom filter
 	}
 
 	var bf *bloomfilter.BloomFilter
 	var err error
 
-	// Try to decode the hashset from the final pages
+	// Try to decode the bloom filter from the final pages
 	for lastPage >= 0 {
 		bfData, err := sstable.pager.GetPage(lastPage)
 		if err != nil {
@@ -1294,7 +1312,7 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 		return nil, nil
 	}
 
-	// Check if the key exists in the hashset
+	// Check if the key exists in the bloom filter, if it does we get the page index
 	exists, pg := bf.Check(key)
 	if !exists {
 		return nil, nil
@@ -1307,9 +1325,18 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 	}
 
 	// Deserialize the key value pair
-	_, v, ttl, err := deserializeKv(data)
+	k, v, ttl, err := deserializeKv(data)
 	if err != nil {
 		return nil, err
+	}
+
+	// Decompress the key and value if the sstable is compressed
+	if sstable.compressed {
+		_, v, err = decompressKeyValue(k, v)
+		if err != nil {
+			return nil, err
+		}
+
 	}
 
 	if ttl != nil && time.Now().After(*ttl) {
