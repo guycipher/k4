@@ -802,7 +802,7 @@ func (k4 *K4) compact() error {
 		go func(i int, sstablesToRemove *[]int, newSStables *[]*SSTable, routinesLock *sync.Mutex) {
 			defer wg.Done() // defer completion of goroutine
 
-			bf := bloomfilter.New(INITIAL_BLOOM_FILTER_SIZE, BLOOM_FILTER_HASHES) // create a new hashset
+			bf := bloomfilter.New(INITIAL_BLOOM_FILTER_SIZE, BLOOM_FILTER_HASHES) // create a new bloom filter
 
 			// create a new sstable
 			newSstable, err := k4.createSSTableNoLock()
@@ -832,6 +832,15 @@ func (k4 *K4) compact() error {
 					}
 				}
 
+				// Check ttl
+				if ttl != nil {
+					// check if ttl is expired
+					if time.Now().After(*ttl) {
+						// skip and go to next
+						continue
+					}
+				}
+
 				data := serializeKv(key, value, ttl)
 				pgN, err := newSstable.pager.Write(data)
 				if err != nil {
@@ -856,6 +865,15 @@ func (k4 *K4) compact() error {
 					if err != nil {
 						k4.printLog(fmt.Sprintf("Failed to compress key-value: %v", err))
 						return
+					}
+				}
+
+				// Check ttl
+				if ttl != nil {
+					// check if ttl is expired
+					if time.Now().After(*ttl) {
+						// skip and go to next
+						continue
 					}
 				}
 
