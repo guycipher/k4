@@ -1986,7 +1986,7 @@ func (it *Iterator) Next() ([]byte, []byte) {
 				return key, value
 			}
 		} else {
-			it.sstIterIndex--
+			it.sstIterIndex-- // If we have no more keys in the sstable we move to the next sstable
 		}
 	}
 
@@ -2045,7 +2045,7 @@ func (it *Iterator) Prev() ([]byte, []byte) {
 				return key, value
 			}
 		} else {
-			it.sstIterIndex++
+			it.sstIterIndex++ // If we have no more keys in the sstable we move to the next sstable
 
 		}
 	}

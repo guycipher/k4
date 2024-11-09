@@ -53,7 +53,7 @@ func New(size int, numHashFuncs int) *BloomFilter {
 
 	// Create hash functions
 	for i := 0; i < numHashFuncs; i++ {
-		seed := uint32(i)
+		seed := uint32(i) // Seed for the hash function
 		hashFuncs[i] = func(data []byte) uint32 {
 			return murmur.Hash32(data, seed) // Return the hash value
 		}
@@ -168,7 +168,7 @@ func Deserialize(data []byte) (*BloomFilter, error) {
 	if err := binary.Read(buf, binary.LittleEndian, &bitArraySize); err != nil {
 		return nil, err
 	}
-	if bitArraySize < 0 || bitArraySize > 1<<20 { // Add reasonable limit
+	if bitArraySize < 0 || bitArraySize > 1<<20 { // Check if the bit array size is valid
 		return nil, errors.New("invalid bit array size")
 	}
 	bf.bitArray = make([]bool, bitArraySize)
