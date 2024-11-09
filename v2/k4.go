@@ -37,7 +37,7 @@ import (
 	"github.com/guycipher/k4/compressor"
 	"github.com/guycipher/k4/pager"
 	"github.com/guycipher/k4/skiplist"
-	"github.com/guycipher/k4/v2/hashset"
+	"github.com/guycipher/k4/v2/bloomfilter"
 	"log"
 	"os"
 	"sort"
@@ -522,8 +522,8 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// we will add all the keys to the hashset
 	// then we will add the key value pairs to the sstable
 
-	// create a hashset
-	hs := hashset.NewHashSet()
+	// create a bloom filter
+	bf := bloomfilter.New(100, 4)
 
 	// We create another iterator to write the key value pairs to the sstable
 	it = skiplist.NewIterator(memtable)
@@ -560,18 +560,18 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 			return err
 		}
 
-		hs.Add(key, pgN) // add key, and page index to hash set
+		bf.Add(key, pgN) // add key, and page index to hash set
 
 	}
 
-	// serialize the hashset
-	hsData, err := hs.Serialize()
+	// serialize the bloom filter
+	bfData, err := bf.Serialize()
 	if err != nil {
 		return err
 	}
 
 	// Write the hashset to the final pages of SSTable
-	_, err = sstable.pager.Write(hsData)
+	_, err = sstable.pager.Write(bfData)
 	if err != nil {
 		return err
 	}
@@ -800,7 +800,7 @@ func (k4 *K4) compact() error {
 		go func(i int, sstablesToRemove *[]int, newSStables *[]*SSTable, routinesLock *sync.Mutex) {
 			defer wg.Done() // defer completion of goroutine
 
-			hs := hashset.NewHashSet() // create a new hashset
+			bf := bloomfilter.New(100, 4) // create a new hashset
 
 			// create a new sstable
 			newSstable, err := k4.createSSTableNoLock()
@@ -837,7 +837,7 @@ func (k4 *K4) compact() error {
 					return
 				}
 
-				hs.Add(key, pgN) // add key and page index to hashset
+				bf.Add(key, pgN) // add key and page index to hashset
 			}
 
 			// create a new iterator for sstable2 to add entries to the new sstable
@@ -864,18 +864,18 @@ func (k4 *K4) compact() error {
 					return
 				}
 
-				hs.Add(key, pgN) // add key and page index to hashset
+				bf.Add(key, pgN) // add key and page index to hashset
 			}
 
-			// serialize the hashset
-			hsData, err := hs.Serialize()
+			// serialize the bloom filter
+			bfData, err := bf.Serialize()
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to serialize hashset: %v", err))
 				return
 			}
 
-			// write hashset to final sstable pages
-			_, err = newSstable.pager.Write(hsData)
+			// write bloom filter to final sstable pages
+			_, err = newSstable.pager.Write(bfData)
 			if err != nil {
 				k4.printLog(fmt.Sprintf("Failed to write hashset to SSTable: %v", err))
 				return
@@ -1248,17 +1248,17 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 		lastPage = sstable.pager.Count() - 1 // Get last page for hashset
 	}
 
-	var hs *hashset.HashSet
+	var bf *bloomfilter.BloomFilter
 	var err error
 
 	// Try to decode the hashset from the final pages
 	for lastPage >= 0 {
-		hsData, err := sstable.pager.GetPage(lastPage)
+		bfData, err := sstable.pager.GetPage(lastPage)
 		if err != nil {
 			return nil, err
 		}
 
-		hs, err = hashset.Deserialize(hsData)
+		bf, err = bloomfilter.Deserialize(bfData)
 		if err == nil {
 			break
 		}
@@ -1271,7 +1271,7 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 	}
 
 	// Check if the key exists in the hashset
-	exists, pg := hs.Contains(key)
+	exists, pg := bf.Check(key)
 	if !exists {
 		return nil, nil
 	}
