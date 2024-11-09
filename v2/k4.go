@@ -37,7 +37,7 @@ import (
 	"github.com/guycipher/k4/compressor"
 	"github.com/guycipher/k4/pager"
 	"github.com/guycipher/k4/skiplist"
-	"github.com/guycipher/k4/v2/bloomfilter"
+	"github.com/guycipher/k4/v2/cuckoofilter"
 	"log"
 	"os"
 	"sort"
@@ -51,8 +51,6 @@ const WAL_EXTENSION = ".wal"                     // The write ahead log file ext
 const TOMBSTONE_VALUE = "$tombstone"             // The tombstone value
 const COMPRESSION_WINDOW_SIZE = 1024 * 32        // The compression window size
 const BACKGROUND_OP_SLEEP = 5 * time.Microsecond // The background sleep time for the background operations
-const INITIAL_BLOOM_FILTER_SIZE = 100            // The initial size of the bloom filter
-const BLOOM_FILTER_HASHES = 4                    // The number of hashes for the bloom filter
 
 // K4 is the main structure for the k4 database
 type K4 struct {
@@ -520,8 +518,8 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 	// Create a new skiplist iterator
 	it := skiplist.NewIterator(memtable)
 
-	// create a bloom filter
-	bf := bloomfilter.New(INITIAL_BLOOM_FILTER_SIZE, BLOOM_FILTER_HASHES)
+	// create a cuckoo filter
+	cf := cuckoofilter.NewCuckooFilter()
 
 	// We create another iterator to write the key value pairs to the sstable
 	it = skiplist.NewIterator(memtable)
@@ -563,21 +561,21 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 		}
 
 		if k4.compress {
-			bf.Add(beforeCompressionKey, pgN) // add key, and page index to bloom filter
+			cf.Insert(pgN, beforeCompressionKey) // add key, and page index to cuckoo filter
 		} else {
-			bf.Add(key, pgN) // add key, and page index to bloom filter
+			cf.Insert(pgN, key) // add key, and page index to cuckoo filter
 		}
 
 	}
 
-	// serialize the bloom filter
-	bfData, err := bf.Serialize()
+	// serialize the cuckoo filter
+	cfData, err := cf.Serialize()
 	if err != nil {
 		return err
 	}
 
-	// Write the bloom filter to the final pages of SSTable
-	_, err = sstable.pager.Write(bfData)
+	// Write the cuckoo filter to the final pages of SSTable
+	_, err = sstable.pager.Write(cfData)
 	if err != nil {
 		return err
 	}
@@ -806,7 +804,7 @@ func (k4 *K4) compact() error {
 		go func(i int, sstablesToRemove *[]int, newSStables *[]*SSTable, routinesLock *sync.Mutex) {
 			defer wg.Done() // defer completion of goroutine
 
-			bf := bloomfilter.New(INITIAL_BLOOM_FILTER_SIZE, BLOOM_FILTER_HASHES) // create a new bloom filter
+			cf := cuckoofilter.NewCuckooFilter() // create a new cuckoo filter
 
 			// create a new sstable
 			newSstable, err := k4.createSSTableNoLock()
@@ -856,9 +854,9 @@ func (k4 *K4) compact() error {
 				}
 
 				if k4.compress {
-					bf.Add(beforeCompressionKey, pgN) // add key, and page index to bloom filter
+					cf.Insert(pgN, beforeCompressionKey) // add key, and page index to cuckoo filter
 				} else {
-					bf.Add(key, pgN) // add key, and page index to bloom filter
+					cf.Insert(pgN, key) // add key, and page index to cuckoo filter
 				}
 			}
 
@@ -899,23 +897,23 @@ func (k4 *K4) compact() error {
 				}
 
 				if k4.compress {
-					bf.Add(beforeCompressionKey, pgN) // add key, and page index to bloom filter
+					cf.Insert(pgN, beforeCompressionKey) // add key, and page index to cuckoo filter
 				} else {
-					bf.Add(key, pgN) // add key, and page index to bloom filter
+					cf.Insert(pgN, key) // add key, and page index to cuckoo filter
 				}
 			}
 
-			// serialize the bloom filter
-			bfData, err := bf.Serialize()
+			// serialize the cuckoo filter
+			cfData, err := cf.Serialize()
 			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to serialize bloom filter: %v", err))
+				k4.printLog(fmt.Sprintf("Failed to serialize cuckoo filter: %v", err))
 				return
 			}
 
-			// write bloom filter to final sstable pages
-			_, err = newSstable.pager.Write(bfData)
+			// write cuckoo filter to final sstable pages
+			_, err = newSstable.pager.Write(cfData)
 			if err != nil {
-				k4.printLog(fmt.Sprintf("Failed to write bloom filter to SSTable: %v", err))
+				k4.printLog(fmt.Sprintf("Failed to write cuckoo filter to SSTable: %v", err))
 				return
 			}
 
@@ -1283,20 +1281,20 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 
 	// Determine the last page if not provided
 	if lastPage == -1 {
-		lastPage = sstable.pager.Count() - 1 // Get last page for bloom filter
+		lastPage = sstable.pager.Count() - 1 // Get last page for cuckoo filter
 	}
 
-	var bf *bloomfilter.BloomFilter
+	var cf *cuckoofilter.CuckooFilter
 	var err error
 
-	// Try to decode the bloom filter from the final pages
+	// Try to decode the cuckoo filter from the final pages
 	for lastPage >= 0 {
-		bfData, err := sstable.pager.GetPage(lastPage)
+		cfData, err := sstable.pager.GetPage(lastPage)
 		if err != nil {
 			return nil, err
 		}
 
-		bf, err = bloomfilter.Deserialize(bfData)
+		cf, err = cuckoofilter.Deserialize(cfData)
 		if err == nil {
 			break
 		}
@@ -1308,12 +1306,12 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 		return nil, err
 	}
 
-	if bf == nil {
+	if cf == nil {
 		return nil, nil
 	}
 
-	// Check if the key exists in the bloom filter, if it does we get the page index
-	exists, pg := bf.Check(key)
+	// Check if the key exists in the cuckoo filter, if it does we get the page index
+	pg, exists := cf.Lookup(key)
 	if !exists {
 		return nil, nil
 	}

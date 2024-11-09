@@ -35,12 +35,12 @@ More detailed benchmarks can be found in [here](https://github.com/guycipher/k4/
 - Configurable compaction interval (in seconds)
 - Configurable logging
 - Configurable skip list (max level and probability)
-- Optimized bloom filter for faster lookups.  SSTable final pages contain a bloom filter.  The bloom filter check returns a page index if key is found.
+- Optimized cuckoo filter for faster lookups.  SSTable final pages contain a cuckoo filter.  The cuckoo filter check returns a page index if key is found.
 - Recovery from WAL
 - Granular page locking (sstables on scan are locked granularly)
 - Thread-safe (multiple readers, single writer)
 - TTL support (time to live).  Keys can be set to expire after a certain time duration.
-- Murmur3 inspired hashing on compression and bloom filter
+- Murmur3 inspired hashing on compression and cuckoo filter
 - Optional compression support (Simple lightweight and optimized Lempel-Ziv 1977 inspired compression algorithm)
 - Background flushing and compaction operations for less blocking on read and write operations
 - Easy intuitive API(Get, Put, Delete, Range, NRange, GreaterThan, GreaterThanEq, LessThan, LessThanEq, NGet)
