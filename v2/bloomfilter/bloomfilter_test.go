@@ -28,6 +28,7 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 package bloomfilter
 
 import (
@@ -36,111 +37,114 @@ import (
 )
 
 func TestNewBloomFilter(t *testing.T) {
-	size := 100
+	size := uint(100)
 	numHashFuncs := 3
 	bf := New(size, numHashFuncs)
 
-	if len(bf.bitArray) != size {
-		t.Errorf("expected bit array size %d, got %d", size, len(bf.bitArray))
+	if len(bf.bitset) != int(size) {
+		t.Errorf("expected bitset size %d, got %d", size, len(bf.bitset))
 	}
 	if len(bf.hashFuncs) != numHashFuncs {
 		t.Errorf("expected number of hash functions %d, got %d", numHashFuncs, len(bf.hashFuncs))
-	}
-	if bf.count != 0 {
-		t.Errorf("expected count 0, got %d", bf.count)
-	}
-	if bf.threshold != size*2 {
-		t.Errorf("expected threshold %d, got %d", size*2, bf.threshold)
 	}
 }
 
 func TestAddAndCheck(t *testing.T) {
 	bf := New(100, 3)
 	key := []byte("test_key")
-	index := int64(42)
+	value := int64(42)
 
-	bf.Add(key, index)
-	exists, idx := bf.Check(key)
+	bf.Add(key, value)
+	exists, retrievedValue := bf.Check(key)
 
 	if !exists {
 		t.Errorf("expected key to exist")
 	}
-	if idx != index {
-		t.Errorf("expected index %d, got %d", index, idx)
+	if retrievedValue != value {
+		t.Errorf("expected value %d, got %d", value, retrievedValue)
 	}
 }
 
 func TestResize(t *testing.T) {
 	bf := New(10, 3)
-	for i := 0; i < 80; i++ {
+	for i := 0; i < 8; i++ {
 		key := []byte{byte(i)}
 		bf.Add(key, int64(i))
 	}
 
-	if bf.count != 80 {
-		t.Errorf("expected count 80, got %d", bf.count)
+	if len(bf.bitset) != 20 {
+		t.Errorf("expected bitset size 20, got %d", len(bf.bitset))
 	}
-	if len(bf.bitArray) != 40 {
-		t.Errorf("expected bit array size 40, got %d", len(bf.bitArray))
+
+	bf.Add([]byte{9}, 9)
+	if len(bf.bitset) <= 10 {
+		t.Errorf("expected bitset to grow, got size %d", len(bf.bitset))
+	}
+}
+
+func TestAddAndCheckMany(t *testing.T) {
+	bf := New(100, 8)
+	var keys [][]byte
+	var values []int64
+
+	for i := 0; i < 10_000; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+
+		keys = append(keys, key)
+		values = append(values, int64(i))
+
+	}
+
+	// Add keys and values to the BloomFilter
+	for i, key := range keys {
+		bf.Add(key, values[i])
+	}
+
+	// Check if each key exists and retrieve its associated value
+	for i, key := range keys {
+		exists, retrievedValue := bf.Check(key)
+		if !exists {
+			t.Errorf("expected key %s to exist", key)
+		}
+		if retrievedValue != values[i] {
+			t.Errorf("expected value %d for key %s, got %d", values[i], key, retrievedValue)
+		}
 	}
 }
 
 func TestSerializeDeserialize(t *testing.T) {
 	bf := New(100, 3)
 	key := []byte("test_key")
-	index := int64(42)
-	bf.Add(key, index)
+	value := int64(42)
+	bf.Add(key, value)
 
 	data, err := bf.Serialize()
 	if err != nil {
 		t.Fatalf("serialization failed: %v", err)
 	}
 
-	newBf, err := Deserialize(data, 3)
+	newBf, err := Deserialize(data)
 	if err != nil {
 		t.Fatalf("deserialization failed: %v", err)
 	}
 
-	newBf.hashFuncs = bf.hashFuncs // Re-initialize HashFuncs
-
-	exists, idx := newBf.Check(key)
+	exists, retrievedValue := newBf.Check(key)
 	if !exists {
 		t.Errorf("expected key to exist")
 	}
-	if idx != index {
-		t.Errorf("expected index %d, got %d", index, idx)
+	if retrievedValue != value {
+		t.Errorf("expected value %d, got %d", value, retrievedValue)
 	}
 }
 
-func TestAddAndCheckMany(t *testing.T) {
+func TestShouldGrow(t *testing.T) {
 	bf := New(10, 3)
-	keys := make([][]byte, 200)
-	indices := make([]int64, 200)
-
-	for i := 0; i < 200; i++ {
-		keys[i] = []byte("key" + fmt.Sprintf("%d", i))
-		indices[i] = int64(i)
-		bf.Add(keys[i], indices[i])
+	for i := 0; i < 7; i++ {
+		key := []byte{byte(i)}
+		bf.Add(key, int64(i))
 	}
 
-	// serialize and deserialize
-	data, err := bf.Serialize()
-	if err != nil {
-		t.Fatalf("serialization failed: %v", err)
-	}
-
-	newBf, err := Deserialize(data, 3)
-	if err != nil {
-		t.Fatalf("deserialization failed: %v", err)
-	}
-
-	for i, key := range keys {
-		exists, idx := newBf.Check(key)
-		if !exists {
-			t.Errorf("expected key %s to exist", key)
-		}
-		if idx != indices[i] {
-			t.Errorf("expected index %d, got %d", indices[i], idx)
-		}
+	if !bf.shouldGrow() {
+		t.Errorf("expected BloomFilter to grow")
 	}
 }

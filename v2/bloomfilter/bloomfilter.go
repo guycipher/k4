@@ -33,196 +33,195 @@ package bloomfilter
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"github.com/guycipher/k4/murmur"
 )
 
-// BloomFilter is the main struct for the bloom filter package
+const LOAD_FACTOR = 0.7
+
+// BloomFilter represents a Bloom filter.
 type BloomFilter struct {
-	bitArray     []bool                // Bit array to store the bloom filter
-	hashFuncs    []func([]byte) uint32 // Hash functions
-	hashIndexMap map[uint32]int64      // Map to store hash-index pairs
-	count        int                   // Number of keys in the bloom filter
-	threshold    int                   // Threshold for resizing the bloom filter
+	bitset    []uint64                      // Bitset for the Bloom filter
+	size      uint                          // Current size of the Bloom filter
+	hashFuncs []func([]byte, uint64) uint64 // Hash functions
+	capacity  uint                          // Number of elements added
+	values    []int64                       // Store actual values here
 }
 
-// New creates a new BloomFilter with the given size and number of hash functions
-func New(size int, numHashFuncs int) *BloomFilter {
-	hashFuncs := make([]func([]byte) uint32, numHashFuncs) // Create hash functions
+// New initializes a new BloomFilter.
+func New(size uint, numHashFuncs int) *BloomFilter {
+	bf := &BloomFilter{
+		bitset:    make([]uint64, size),                              // Initialize the bitset
+		size:      size,                                              // Set the initial size
+		hashFuncs: make([]func([]byte, uint64) uint64, numHashFuncs), // Initialize the hash functions
+		capacity:  0,                                                 // Initialize capacity
+		values:    make([]int64, size),                               // Array to store actual values
+	}
 
-	// Create hash functions
+	// Initialize the hash functions
 	for i := 0; i < numHashFuncs; i++ {
-		seed := uint32(i) // Seed for the hash function
-		hashFuncs[i] = func(data []byte) uint32 {
-			return murmur.Hash32(data, seed) // Return the hash value
-		}
+		bf.hashFuncs[i] = murmur.Hash64 // Use murmur hash function
 	}
-	return &BloomFilter{
-		bitArray:     make([]bool, size),
-		hashFuncs:    hashFuncs,
-		hashIndexMap: make(map[uint32]int64),
-		threshold:    size * 2,
-	}
+
+	return bf // Return the BloomFilter
 }
 
-// Add adds a key to the bloom filter
-func (bf *BloomFilter) Add(key []byte, index int64) {
-	// Resize the bloom filter if the count exceeds the threshold
-	if bf.count >= bf.threshold {
-		bf.resize()
+// shouldGrow determines if the BloomFilter needs to grow.
+func (bf *BloomFilter) shouldGrow() bool {
+	return float64(bf.capacity) >= LOAD_FACTOR*float64(bf.size)
+}
+
+// grow doubles the size of the BloomFilter and rehashes existing elements.
+func (bf *BloomFilter) grow() {
+	newSize := bf.size * 2
+	newBitset := make([]uint64, newSize)
+	newValues := make([]int64, newSize)
+
+	// Rehash existing elements
+	for i := uint(0); i < bf.size; i++ {
+		if bf.bitset[i]&1 == 1 {
+			value := bf.values[i] // Store the associated value
+			for _, hashFunc := range bf.hashFuncs {
+				index := hashFunc([]byte{byte(i)}, 0) % uint64(newSize)
+				newBitset[index] = 1
+				newValues[index] = value
+			}
+		}
 	}
-	// Add the key to the bloom filter
+
+	bf.bitset = newBitset
+	bf.values = newValues
+	bf.size = newSize
+}
+
+// Add adds a key and its associated value to the BloomFilter.
+func (bf *BloomFilter) Add(key []byte, value int64) {
+	if bf.shouldGrow() {
+		bf.grow()
+	}
+
+	// Add the key and value to the BloomFilter
 	for _, hashFunc := range bf.hashFuncs {
-		hash := hashFunc(key)
-		position := hash % uint32(len(bf.bitArray))
-		bf.bitArray[position] = true
-		bf.hashIndexMap[hash] = index // Add the hash to the hash-index map
+		index := hashFunc(key, 0) % uint64(bf.size) // Use the current size
+		bf.bitset[index] = 1                        // Set presence bit
+		bf.values[index] = value                    // Store the actual value at that index
 	}
-	bf.count++
+	bf.capacity++
 }
 
-// Check checks if a key exists in the bloom filter
+// Check checks if a key is possibly in the BloomFilter and retrieves its associated value.
 func (bf *BloomFilter) Check(key []byte) (bool, int64) {
-	for _, hashFunc := range bf.hashFuncs { // Iterate over the hash functions
-		hash := hashFunc(key)
-		position := hash % uint32(len(bf.bitArray))
-		if !bf.bitArray[position] {
-			return false, -1
-		}
-		index, exists := bf.hashIndexMap[hash] // Check if the hash exists in the hash-index map
-		if exists {
-			return true, index
+	// Check if the key is possibly in the BloomFilter
+	for _, hashFunc := range bf.hashFuncs {
+		index := hashFunc(key, 0) % uint64(bf.size)
+
+		// If the presence bit is not set, the key is definitely not in the BloomFilter
+		if bf.bitset[index]&1 == 0 {
+			return false, 0
 		}
 	}
-	return false, -1
+	// Retrieve the value from the associated index
+	index := bf.hashFuncs[0](key, 0) % uint64(bf.size)
+	return true, bf.values[index] // Return the actual value stored at that index
 }
 
-// resize resizes the bloom filter
-func (bf *BloomFilter) resize() {
-	newSize := len(bf.bitArray) * 2 // Double the size of the bit array
-	newBitArray := make([]bool, newSize)
-	// Rehash the keys
-	for hash := range bf.hashIndexMap {
-		position := hash % uint32(newSize)
-		newBitArray[position] = true
-	}
-	bf.bitArray = newBitArray
-	bf.threshold = newSize * 2
-}
-
-// Serialize serializes the bloom filter
+// Serialize serializes the BloomFilter to a byte slice
 func (bf *BloomFilter) Serialize() ([]byte, error) {
 	var buf bytes.Buffer
 
-	// Serialize BitArray
-	bitArraySize := int32(len(bf.bitArray))
-	if err := binary.Write(&buf, binary.LittleEndian, bitArraySize); err != nil {
+	// Write the size of the BloomFilter as uint32
+	if err := binary.Write(&buf, binary.LittleEndian, uint32(bf.size)); err != nil {
 		return nil, err
 	}
-	for _, bit := range bf.bitArray {
-		var b byte
-		if bit {
-			b = 1
-		} else {
-			b = 0
-		}
-		if err := buf.WriteByte(b); err != nil {
+
+	// Write the number of hash functions
+	numHashFuncs := int32(len(bf.hashFuncs)) // Get the number of hash functions
+	if err := binary.Write(&buf, binary.LittleEndian, numHashFuncs); err != nil {
+		return nil, err
+	}
+
+	// Write the bitset
+	for _, bit := range bf.bitset {
+		if err := binary.Write(&buf, binary.LittleEndian, bit); err != nil {
 			return nil, err
 		}
 	}
 
-	// Serialize HashIndexMap
-	hashIndexMapSize := int32(len(bf.hashIndexMap))
-	if err := binary.Write(&buf, binary.LittleEndian, hashIndexMapSize); err != nil {
+	// Write the length of the values array
+	valuesLen := int32(len(bf.values))
+	if err := binary.Write(&buf, binary.LittleEndian, valuesLen); err != nil {
 		return nil, err
 	}
-	for hash, index := range bf.hashIndexMap {
-		if err := binary.Write(&buf, binary.LittleEndian, hash); err != nil {
-			return nil, err
-		}
-		if err := binary.Write(&buf, binary.LittleEndian, index); err != nil {
+
+	// Write the values array
+	for _, value := range bf.values {
+		if err := binary.Write(&buf, binary.LittleEndian, value); err != nil {
 			return nil, err
 		}
 	}
 
-	// Serialize Count and Threshold
-	if err := binary.Write(&buf, binary.LittleEndian, int32(bf.count)); err != nil {
-		return nil, err
-	}
-	if err := binary.Write(&buf, binary.LittleEndian, int32(bf.threshold)); err != nil {
+	// Write the capacity as uint32
+	if err := binary.Write(&buf, binary.LittleEndian, uint32(bf.capacity)); err != nil {
 		return nil, err
 	}
 
 	return buf.Bytes(), nil
 }
 
-// Ensure hash functions are reinitialized after deserialization
-func (bf *BloomFilter) reinitializeHashFuncs(numHashFuncs int) {
-	bf.hashFuncs = make([]func([]byte) uint32, numHashFuncs)
-	for i := 0; i < numHashFuncs; i++ {
-		seed := uint32(i)
-		bf.hashFuncs[i] = func(data []byte) uint32 {
-			return murmur.Hash32(data, seed)
-		}
-	}
-}
+// Deserialize deserializes a byte slice to a BloomFilter
+func Deserialize(data []byte) (*BloomFilter, error) {
+	buf := bytes.NewReader(data)
 
-// Deserialize deserializes the bloom filter
-func Deserialize(data []byte, numHashFuncs int) (*BloomFilter, error) {
-	buf := bytes.NewBuffer(data)
-	bf := &BloomFilter{}
-
-	// Deserialize BitArray
-	var bitArraySize int32
-	if err := binary.Read(buf, binary.LittleEndian, &bitArraySize); err != nil {
+	// Read the size of the BloomFilter as uint32
+	var size uint32
+	if err := binary.Read(buf, binary.LittleEndian, &size); err != nil {
 		return nil, err
 	}
-	if bitArraySize < 0 || bitArraySize > 1<<20 { // Check if the bit array size is valid
-		return nil, errors.New("invalid bit array size")
+
+	// Read the number of hash functions
+	var numHashFuncs int32
+	if err := binary.Read(buf, binary.LittleEndian, &numHashFuncs); err != nil {
+		return nil, err
 	}
-	bf.bitArray = make([]bool, bitArraySize)
-	for i := int32(0); i < bitArraySize; i++ {
-		b, err := buf.ReadByte()
-		if err != nil {
+
+	// Read the bitset
+	bitset := make([]uint64, size)
+	for i := range bitset {
+		if err := binary.Read(buf, binary.LittleEndian, &bitset[i]); err != nil {
 			return nil, err
 		}
-		bf.bitArray[i] = b == 1
 	}
 
-	// Deserialize HashIndexMap
-	var hashIndexMapSize int32
-	if err := binary.Read(buf, binary.LittleEndian, &hashIndexMapSize); err != nil {
+	// Read the length of the values array
+	var valuesLen int32
+	if err := binary.Read(buf, binary.LittleEndian, &valuesLen); err != nil {
 		return nil, err
 	}
-	if hashIndexMapSize < 0 || hashIndexMapSize > 1<<20 {
-		return nil, errors.New("invalid hash index map size")
-	}
-	bf.hashIndexMap = make(map[uint32]int64, hashIndexMapSize)
-	for i := int32(0); i < hashIndexMapSize; i++ {
-		var hash uint32
-		if err := binary.Read(buf, binary.LittleEndian, &hash); err != nil {
+
+	// Read the values array
+	values := make([]int64, valuesLen)
+	for i := range values {
+		if err := binary.Read(buf, binary.LittleEndian, &values[i]); err != nil {
 			return nil, err
 		}
-		var index int64
-		if err := binary.Read(buf, binary.LittleEndian, &index); err != nil {
-			return nil, err
-		}
-		bf.hashIndexMap[hash] = index
 	}
 
-	// Deserialize Count and Threshold
-	var count, threshold int32
-	if err := binary.Read(buf, binary.LittleEndian, &count); err != nil {
+	// Read the capacity as uint32
+	var capacity uint32
+	if err := binary.Read(buf, binary.LittleEndian, &capacity); err != nil {
 		return nil, err
 	}
-	if err := binary.Read(buf, binary.LittleEndian, &threshold); err != nil {
-		return nil, err
+
+	// Reinitialize the hash functions
+	hashFuncs := make([]func([]byte, uint64) uint64, numHashFuncs)
+	for i := 0; i < int(numHashFuncs); i++ {
+		hashFuncs[i] = murmur.Hash64 // Use murmur hash function
 	}
-	bf.count = int(count)
-	bf.threshold = int(threshold)
 
-	// Reinitialize hash functions
-	bf.reinitializeHashFuncs(numHashFuncs)
-
-	return bf, nil
+	return &BloomFilter{
+		bitset:    bitset,         // Set the bitset
+		size:      uint(size),     // Set the size
+		hashFuncs: hashFuncs,      // Set the hash functions
+		values:    values,         // Set the values array
+		capacity:  uint(capacity), // Set the capacity
+	}, nil
 }
