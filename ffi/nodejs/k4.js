@@ -80,7 +80,9 @@ const k4 = ffi.Library('libk4', {
     'iter_next': [IterNextReturn, ['pointer']],
     'iter_prev': [IterPrevReturn, ['pointer']],
     'iter_reset': ['void', ['pointer']],
-    'iter_close': ['void', ['pointer']]
+    'iter_close': ['void', ['pointer']],
+    'escalate_flush': ['int', ['pointer']],
+    'escalate_compaction': ['int', ['pointer']]
 });
 
 module.exports = k4; // Export the k4 object
