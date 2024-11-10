@@ -5,20 +5,9 @@
 K4 is an open-source, high-performance, transactional, and durable storage engine based on an LSM (Log-Structured Merge) tree architecture. This design optimizes high-speed writes and reads, making it ideal for modern data-intensive applications.
 
 ### Benchmarks
-```
-goos: linux
-goarch: amd64
-pkg: github.com/guycipher/k4
-cpu: 11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz
-BenchmarkK4_Put
-BenchmarkK4_Put-16    	  158104	      6862 ns/op # 145,000 ops/s
-
-RocksDB vs K4
-+=+=+=+=+=+=+=+
-Both engines were used with default settings and similar configurations.
-**RocksDB v7.8.3**      1 million writes sequential key-value pairs default settings = 2.9s-3.1s
-**K4      v1.9.0**      1 million writes sequential key-value pairs default settings = 174.67ms-190.00ms
-```
+<div>
+    <h1 align="center"><img width="268" src="graphics/bench-k4-2-1-6-chart-round.png"></h1>
+</div>
 
 More detailed benchmarks on latest version can be found [here](https://github.com/guycipher/k4/tree/main/bench)
 
