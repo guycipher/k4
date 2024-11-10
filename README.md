@@ -6,7 +6,7 @@ K4 is an open-source, high-performance, transactional, and durable storage engin
 
 ### Benchmarks
 <div>
-    <h1 align="center"><img width="268" src="graphics/bench-k4-2-1-6-chart-round.png"></h1>
+    <h1 align="center"><img width="428" src="graphics/bench-k4-2-1-6-chart-round.png"></h1>
 </div>
 
 More detailed benchmarks on latest version can be found [here](https://github.com/guycipher/k4/tree/main/bench)
