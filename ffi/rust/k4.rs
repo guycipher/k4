@@ -83,4 +83,6 @@ extern "C" {
     pub fn iter_prev(iterPtr: *mut c_void) -> IterPrevReturn;
     pub fn iter_reset(iterPtr: *mut c_void);
     pub fn iter_close(iterPtr: *mut c_void);
+    pub fn escalate_flush(dbPtr: *mut c_void) -> c_int;
+    pub fn escalate_compaction(dbPtr: *mut c_void) -> c_int;
 }
