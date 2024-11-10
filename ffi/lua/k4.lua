@@ -91,4 +91,6 @@ IterNextReturn iter_next(void* iterPtr);
 IterPrevReturn iter_prev(void* iterPtr);
 void iter_reset(void* iterPtr);
 void iter_close(void* iterPtr);
+int escalate_flush(void* dbPtr);
+int escalate_compaction(void* dbPtr);
 ]]
