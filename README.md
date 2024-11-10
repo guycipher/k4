@@ -22,6 +22,9 @@ Both engines were used with default settings and similar configurations.
 
 More detailed benchmarks on latest version can be found [here](https://github.com/guycipher/k4/tree/main/bench)
 
+### Articles, Blogs, Papers
+- [A Comparative Study of RocksDB and K4 Storage Engines](https://github.com/guycipher/k4/wiki/A-Comparative-Study-of-RocksDB-and-K4-Storage-Engines)
+
 ### Features
 - High speed writes and reads.
 - Durability
