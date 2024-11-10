@@ -464,4 +464,28 @@ func iter_close(iterPtr unsafe.Pointer) {
 	iterHandle.Delete()
 }
 
+//export escalate_flush
+func escalate_flush(dbPtr unsafe.Pointer) C.int {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	err := db.EscalateFlush()
+	if err != nil {
+		return -1
+	}
+	return 0
+}
+
+//export escalate_compaction
+func escalate_compaction(dbPtr unsafe.Pointer) C.int {
+	handle := cgo.Handle(dbPtr)
+	db := handle.Value().(*k4.K4)
+
+	err := db.EscalateCompaction()
+	if err != nil {
+		return -1
+	}
+	return 0
+}
+
 func main() {}
