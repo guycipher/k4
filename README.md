@@ -12,8 +12,9 @@ HDD benchmarks on a WDC WDS500G2B0A-00SM50
 
 More detailed benchmarks on latest version can be found [here](https://github.com/guycipher/k4/tree/main/bench)
 
-### Articles, Blogs, Papers
+### Articles, Papers, Discussions
 - [A Comparative Study of RocksDB and K4 Storage Engines](https://github.com/guycipher/k4/wiki/A-Comparative-Study-of-RocksDB-and-K4-Storage-Engines)
+- [Progress, Plans, and a Long-Term Release Update](https://github.com/guycipher/k4/discussions/23)
 
 ### Features
 - High speed writes and reads.
