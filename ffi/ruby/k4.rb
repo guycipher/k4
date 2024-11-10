@@ -79,4 +79,6 @@ module K4
   attach_function :iter_prev, [:pointer], IterPrevReturn.by_value
   attach_function :iter_reset, [:pointer], :void
   attach_function :iter_close, [:pointer], :void
+  attach_function :escalate_flush, [:pointer], :int
+  attach_function :escalate_compaction, [:pointer], :int
 end
