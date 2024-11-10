@@ -206,6 +206,8 @@ Compression could save disk space and reduce disk I/O but it could also increase
 
 
 ### API
+The K4 API is finalized and will not change.  The API is simple and intuitive.  The API is designed to be easy to use and understand.
+
 ```go
 
 // Open a new K4 instance
