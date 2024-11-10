@@ -77,8 +77,14 @@ func OpenPager(filename string, flag int, perm os.FileMode) (*Pager, error) {
 	}
 
 	pager := &Pager{file: file, pageLocks: pgLocks, pageLocksLock: &sync.RWMutex{}, lock: &sync.RWMutex{}, wg: &sync.WaitGroup{}}
+
+	// we create a stop sync channel to stop the periodic sync when the pager is closed
 	pager.stopSync = make(chan struct{})
+
+	// we add the periodic sync goroutine to the wait group
 	pager.wg.Add(1)
+
+	// we start the periodic sync goroutine
 	go pager.startPeriodicSync()
 
 	return pager, nil
@@ -244,8 +250,9 @@ func (p *Pager) Write(data []byte) (int64, error) {
 
 // Close closes the file
 func (p *Pager) Close() error {
-	p.stopSync <- struct{}{}
+	p.stopSync <- struct{}{} // stop the periodic sync goroutine
 
+	// we wait for the periodic sync goroutine to complete
 	p.wg.Wait()
 
 	// Ensure all pending writes are flushed to disk
