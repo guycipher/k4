@@ -58,6 +58,8 @@ public interface K4 extends Library {
     K4.iter_prev_return iter_prev(Pointer iterPtr);
     void iter_reset(Pointer iterPtr);
     void iter_close(Pointer iterPtr);
+    int escalate_flush(Pointer dbPtr);
+    int escalate_compaction(Pointer dbPtr);
 
     class iter_next_return extends Structure {
         public Pointer r0;
