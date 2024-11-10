@@ -120,3 +120,9 @@ k4.iter_prev.restype = IterPrevReturn
 k4.iter_reset.argtypes = [c_void_p]
 
 k4.iter_close.argtypes = [c_void_p]
+
+k4.escalate_flush.argtypes = [c_void_p]
+k4.escalate_flush.restype = c_int
+
+k4.escalate_compaction.argtypes = [c_void_p]
+k4.escalate_compaction.restype = c_int
