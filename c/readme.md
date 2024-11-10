@@ -84,8 +84,11 @@ struct KeyValuePairArray nget(void* dbPtr, char* key, int keyLen);
 struct KeyValuePairArray greater_than_eq(void* dbPtr, char* key, int keyLen);
 struct KeyValuePairArray less_than_eq(void* dbPtr, char* key, int keyLen);
 void* new_iterator(void* dbPtr);
+int escalate_flush(void* dbPtr);
+int escalate_compaction(void* dbPtr);
 
-/* Return type for iter_next */
+
+    /* Return type for iter_next */
 struct iter_next_return {
     char* r0;
     char* r1;
