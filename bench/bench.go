@@ -6,12 +6,14 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"sync"
 	"time"
 )
 
 const (
-	DB_PATH = "testdb"
-	NUM_OPS = 10000
+	DB_PATH     = "testdb"
+	NUM_OPS     = 10000
+	NUM_THREADS = 4
 )
 
 func benchmarkK4() {
@@ -111,7 +113,22 @@ func benchmarkK4Random() {
 	os.RemoveAll(DB_PATH)
 }
 
+func benchmarkK4Concurrent() {
+	var wg sync.WaitGroup
+	wg.Add(NUM_THREADS)
+
+	for i := 0; i < NUM_THREADS; i++ {
+		go func() {
+			defer wg.Done()
+			benchmarkK4()
+		}()
+	}
+
+	wg.Wait()
+}
+
 func main() {
 	benchmarkK4()
 	benchmarkK4Random()
+	benchmarkK4Concurrent()
 }
