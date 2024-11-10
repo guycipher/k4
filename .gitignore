@@ -39,3 +39,5 @@ bench/bench.exe
 bench/bench_random.c
 bench/bench_random.exe
 bench/testdb
+bench/bench_concurrent
+bench/bench_concurrent.exe
