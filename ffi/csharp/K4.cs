@@ -117,4 +117,10 @@ public static class K4
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern void iter_close(IntPtr iterPtr);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int escalate_flush(IntPtr dbPtr);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int escalate_compaction(IntPtr dbPtr);
 }
