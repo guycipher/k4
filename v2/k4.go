@@ -135,7 +135,7 @@ type KV struct {
 type KeyValueArray []*KV
 
 // Iterator is a structure for an iterator which goes through
-// memtable and sstables.  First it goes through the memtable, then once exhausted goes through the sstables
+// memtable and sstables.  First it goes through the memtable, then once exhausted goes through the sstables from newest to oldest
 type Iterator struct {
 	instance     *K4                        // the instance of K4
 	memtableIter *skiplist.SkipListIterator // memtable iterator
@@ -265,11 +265,13 @@ func (k4 *K4) Close() error {
 
 	k4.printLog("Closing up")
 
+	// when there is anything in the memtable we flush it to disk
 	if k4.memtable.Size() > 0 {
-		k4.printLog(fmt.Sprintf("Memtable is of size %d bytes and must be flushed to disk", k4.memtable.Size()))
+		k4.printLog(fmt.Sprintf("Memtable is of size %d bytes and is being flushed to disk", k4.memtable.Size()))
 		k4.appendMemtableToFlushQueue()
 	}
 
+	// signal the background operations to exit
 	close(k4.exit)
 
 	k4.printLog("Waiting for background operations to finish")
@@ -2052,7 +2054,7 @@ func (it *Iterator) Prev() ([]byte, []byte) {
 	return nil, nil
 }
 
-// Reset resets the iterator
+// Reset resets the sstable iterator
 func (it *Iterator) Reset() {
 	it.memtableIter = skiplist.NewIterator(it.instance.memtable) // We reset the memtable iterator
 	it.sstIterIndex = len(it.instance.sstables) - 1              // We reset the sstable iterator index

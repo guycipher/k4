@@ -1,6 +1,6 @@
 // Package k4
 // BSD 3-Clause License
-//
+// @depreciated please refer to github.com/guycipher/k4/v2 for the latest version
 // Copyright (c) 2024, Alex Gaetano Padula
 // All rights reserved.
 //
