@@ -122,7 +122,7 @@ Will iterate over key-value pairs in memtable then sstables.
 
 ```go
 
-it := NewIterator(db)
+it := k4.NewIterator(db)
 
 for  {
     key, value := it.Next()
