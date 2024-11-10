@@ -1,5 +1,5 @@
 // Package fuzz
-// Fuzz generates random key-value pairs for fuzz testing
+// Fuzz generates random byte arrays, strings and key-value pairs for fuzz testing
 // BSD 3-Clause License
 //
 // Copyright (c) 2024, Alex Gaetano Padula
