@@ -8,6 +8,7 @@ K4 is an open-source, high-performance, transactional, and durable storage engin
 <div>
     <h1 align="center"><img src="graphics/bench-k4-2-1-6-chart-round.png"></h1>
 </div>
+HDD benchmarks on a WDC WDS500G2B0A-00SM50
 
 More detailed benchmarks on latest version can be found [here](https://github.com/guycipher/k4/tree/main/bench)
 
