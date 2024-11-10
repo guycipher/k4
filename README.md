@@ -20,7 +20,7 @@ Both engines were used with default settings and similar configurations.
 **K4      v1.9.0**      1 million writes sequential key-value pairs default settings = 174.67ms-190.00ms
 ```
 
-More detailed benchmarks on latest version can be found in [here](https://github.com/guycipher/k4/tree/main/bench)
+More detailed benchmarks on latest version can be found [here](https://github.com/guycipher/k4/tree/main/bench)
 
 ### Features
 - High speed writes and reads.
