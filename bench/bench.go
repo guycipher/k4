@@ -15,9 +15,9 @@ const (
 	DB_PATH = "testdb"
 )
 
-func benchmarkK4(thread int, numOps int) {
+func benchmarkK4(thread, numOps, flushThreshold, compactionInterval int) {
 
-	db, err := k4.Open(DB_PATH, (1024*1024)*256, 3600, false, false)
+	db, err := k4.Open(DB_PATH, flushThreshold, compactionInterval, false, false)
 	if err != nil {
 		log.Fatalf("Error opening K4 database: %v", err)
 	}
@@ -63,8 +63,8 @@ func benchmarkK4(thread int, numOps int) {
 	os.RemoveAll(DB_PATH)
 }
 
-func benchmarkK4Random(numOps int) {
-	db, err := k4.Open(DB_PATH, (1024*1024)*256, 3600, false, false)
+func benchmarkK4Random(numOps, flushThreshold, compactionInterval int) {
+	db, err := k4.Open(DB_PATH, flushThreshold, compactionInterval, false, false)
 	if err != nil {
 		log.Fatalf("Error opening K4 database: %v", err)
 	}
@@ -113,7 +113,7 @@ func benchmarkK4Random(numOps int) {
 	os.RemoveAll(DB_PATH)
 }
 
-func benchmarkK4Concurrent(numOps, numThreads int) {
+func benchmarkK4Concurrent(numOps, numThreads, flushThreshold, compactionInterval int) {
 	var wg sync.WaitGroup
 	wg.Add(numThreads)
 
@@ -121,7 +121,7 @@ func benchmarkK4Concurrent(numOps, numThreads int) {
 		go func() {
 			defer wg.Done()
 
-			benchmarkK4(i, numOps)
+			benchmarkK4(i, numOps, flushThreshold, compactionInterval)
 		}()
 	}
 
@@ -131,6 +131,8 @@ func benchmarkK4Concurrent(numOps, numThreads int) {
 func main() {
 	numOps := flag.Int("num_ops", 10000, "number of operations")
 	numThreads := flag.Int("num_threads", 4, "number of threads for concurrent operations")
+	flushSize := flag.Int("flush_threshold", (1024*1024)*128, "flush threshold in bytes")
+	compactionInterval := flag.Int("compaction_interval", 3600, "compaction interval")
 
 	flag.Parse() // parse the flags
 
@@ -141,11 +143,11 @@ func main() {
 	fmt.Println()
 
 	fmt.Println("Benchmarking K4 non concurrent operations")
-	benchmarkK4(-1, *numOps)
+	benchmarkK4(-1, *numOps, *flushSize, *compactionInterval)
 	fmt.Println()
 	fmt.Println("Benchmarking K4 random operations")
-	benchmarkK4Random(*numOps)
+	benchmarkK4Random(*numOps, *flushSize, *compactionInterval)
 	fmt.Println()
 	fmt.Println("Benchmarking K4 concurrent operations")
-	benchmarkK4Concurrent(*numOps, *numThreads)
+	benchmarkK4Concurrent(*numOps, *numThreads, *flushSize, *compactionInterval)
 }
