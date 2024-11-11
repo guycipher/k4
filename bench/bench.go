@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/guycipher/k4/v2"
 	"log"
@@ -11,12 +12,10 @@ import (
 )
 
 const (
-	DB_PATH     = "testdb"
-	NUM_OPS     = 10000
-	NUM_THREADS = 4
+	DB_PATH = "testdb"
 )
 
-func benchmarkK4(thread int) {
+func benchmarkK4(thread int, numOps int) {
 
 	db, err := k4.Open(DB_PATH, (1024*1024)*256, 3600, false, false)
 	if err != nil {
@@ -29,7 +28,7 @@ func benchmarkK4(thread int) {
 
 	// Benchmark Put
 	start := time.Now()
-	for i := 0; i < NUM_OPS; i++ {
+	for i := 0; i < numOps; i++ {
 		key = []byte(fmt.Sprintf("key%d", i))
 		value = []byte(fmt.Sprintf("value%d", i))
 		if err := db.Put(key, value, nil); err != nil {
@@ -41,7 +40,7 @@ func benchmarkK4(thread int) {
 
 	// Benchmark Get
 	start = time.Now()
-	for i := 0; i < NUM_OPS; i++ {
+	for i := 0; i < numOps; i++ {
 		key = []byte(fmt.Sprintf("key%d", i))
 		if _, err := db.Get(key); err != nil {
 			log.Fatalf("Error getting key: %v", err)
@@ -52,7 +51,7 @@ func benchmarkK4(thread int) {
 
 	// Benchmark Delete
 	start = time.Now()
-	for i := 0; i < NUM_OPS; i++ {
+	for i := 0; i < numOps; i++ {
 		key = []byte(fmt.Sprintf("key%d", i))
 		if err := db.Delete(key); err != nil {
 			log.Fatalf("Error deleting key: %v", err)
@@ -64,7 +63,7 @@ func benchmarkK4(thread int) {
 	os.RemoveAll(DB_PATH)
 }
 
-func benchmarkK4Random() {
+func benchmarkK4Random(numOps int) {
 	db, err := k4.Open(DB_PATH, (1024*1024)*256, 3600, false, false)
 	if err != nil {
 		log.Fatalf("Error opening K4 database: %v", err)
@@ -79,8 +78,8 @@ func benchmarkK4Random() {
 
 	// Benchmark Put
 	start := time.Now()
-	for i := 0; i < NUM_OPS; i++ {
-		key = []byte(fmt.Sprintf("key%d", rand.Intn(NUM_OPS)))
+	for i := 0; i < numOps; i++ {
+		key = []byte(fmt.Sprintf("key%d", rand.Intn(numOps)))
 		value = []byte(fmt.Sprintf("value%d", i))
 		if err := db.Put(key, value, nil); err != nil {
 			log.Fatalf("Error putting key: %v", err)
@@ -91,8 +90,8 @@ func benchmarkK4Random() {
 
 	// Benchmark Get
 	start = time.Now()
-	for i := 0; i < NUM_OPS; i++ {
-		key = []byte(fmt.Sprintf("key%d", rand.Intn(NUM_OPS)))
+	for i := 0; i < numOps; i++ {
+		key = []byte(fmt.Sprintf("key%d", rand.Intn(numOps)))
 		if _, err := db.Get(key); err != nil {
 			log.Fatalf("Error getting key: %v", err)
 		}
@@ -102,8 +101,8 @@ func benchmarkK4Random() {
 
 	// Benchmark Delete
 	start = time.Now()
-	for i := 0; i < NUM_OPS; i++ {
-		key = []byte(fmt.Sprintf("key%d", rand.Intn(NUM_OPS)))
+	for i := 0; i < numOps; i++ {
+		key = []byte(fmt.Sprintf("key%d", rand.Intn(numOps)))
 		if err := db.Delete(key); err != nil {
 			log.Fatalf("Error deleting key: %v", err)
 		}
@@ -114,15 +113,15 @@ func benchmarkK4Random() {
 	os.RemoveAll(DB_PATH)
 }
 
-func benchmarkK4Concurrent() {
+func benchmarkK4Concurrent(numOps, numThreads int) {
 	var wg sync.WaitGroup
-	wg.Add(NUM_THREADS)
+	wg.Add(numThreads)
 
-	for i := 0; i < NUM_THREADS; i++ {
+	for i := 0; i < numThreads; i++ {
 		go func() {
 			defer wg.Done()
 
-			benchmarkK4(i)
+			benchmarkK4(i, numOps)
 		}()
 	}
 
@@ -130,19 +129,23 @@ func benchmarkK4Concurrent() {
 }
 
 func main() {
+	numOps := flag.Int("num_ops", 10000, "number of operations")
+	numThreads := flag.Int("num_threads", 4, "number of threads for concurrent operations")
+
+	flag.Parse() // parse the flags
 
 	fmt.Println("Benchmarker started with the set parameters:")
-	fmt.Printf("Number of operations: %d\n", NUM_OPS)
-	fmt.Printf("Number of threads: %d\n", NUM_THREADS)
+	fmt.Printf("Number of operations: %d\n", *numOps)
+	fmt.Printf("Number of threads: %d\n", *numThreads)
 
 	fmt.Println()
 
 	fmt.Println("Benchmarking K4 non concurrent operations")
-	benchmarkK4(-1)
+	benchmarkK4(-1, *numOps)
 	fmt.Println()
 	fmt.Println("Benchmarking K4 random operations")
-	benchmarkK4Random()
+	benchmarkK4Random(*numOps)
 	fmt.Println()
 	fmt.Println("Benchmarking K4 concurrent operations")
-	benchmarkK4Concurrent()
+	benchmarkK4Concurrent(*numOps, *numThreads)
 }
