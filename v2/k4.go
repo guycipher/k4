@@ -1394,14 +1394,14 @@ func (k4 *K4) Delete(key []byte) error {
 	k4.memtableLock.Lock()
 	defer k4.memtableLock.Unlock()
 
-	// We simply put a tombstone value for the key
-	k4.memtable.Insert(key, []byte(TOMBSTONE_VALUE), nil)
-
 	// Append operation to WAL queue
 	err := k4.appendToWALQueue(DELETE, key, nil)
 	if err != nil {
 		return err
 	}
+
+	// We simply put a tombstone value for the key
+	k4.memtable.Insert(key, []byte(TOMBSTONE_VALUE), nil)
 
 	return nil
 }
