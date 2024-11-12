@@ -231,7 +231,7 @@ func TestCompressMemtableFlush(t *testing.T) {
 
 func TestCompaction(t *testing.T) {
 	dir := setup(t)
-	//defer teardown(dir)
+	defer teardown(dir)
 
 	k4, err := Open(dir, 12196/2, 2000, true, false)
 	if err != nil {
@@ -387,6 +387,10 @@ func TestCompaction2(t *testing.T) {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
 
+		if i == 50 {
+			k4.compact()
+		}
+
 		err = k4.Put(key, value, nil)
 		if err != nil {
 			k4.Close()
@@ -395,8 +399,6 @@ func TestCompaction2(t *testing.T) {
 	}
 
 	time.Sleep(5 * time.Second) // We wait for flushes to occur
-
-	k4.compact() // now we will compact and close
 
 	k4.Close()
 
@@ -584,7 +586,7 @@ func TestWALRecovery(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 1024, 60, false, false)
+	k4, err := Open(dir, 1024, 1000, false, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -1258,7 +1260,7 @@ func TestCompactionTTL(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 12196/4, 2, true, false)
+	k4, err := Open(dir, 12196/4, 3000, true, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -1267,6 +1269,10 @@ func TestCompactionTTL(t *testing.T) {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
 		ttl := time.Duration(2 * time.Second)
+
+		if i == 250 {
+			k4.compact()
+		}
 
 		err = k4.Put(key, value, &ttl)
 		if err != nil {
