@@ -15,7 +15,7 @@ gcc -o bench_concurrent bench_concurrent.c -lrocksdb -llmdb -lk4 && ./bench_conc
 
 ### GO Bench building
 ```
-go build -o bench bench.go && ./bench -num_ops 10000 -num_threads 4 -flush_threshold (1024*1024)*128 -compaction_interval 3600
+go build -o bench bench.go && ./bench -num_ops 10000 -num_threads 4 -flush_threshold $((1024*1024*128)) -compaction_interval 3600
 ```
 
 10000 operations are performed for each operation type.

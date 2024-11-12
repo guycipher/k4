@@ -1358,6 +1358,11 @@ func (k4 *K4) Put(key, value []byte, ttl *time.Duration) error {
 		return fmt.Errorf("key or value cannot be nil")
 	}
 
+	// Value cannot be a tombstone
+	if bytes.Equal(value, []byte(TOMBSTONE_VALUE)) {
+		return fmt.Errorf("value cannot be a tombstone")
+	}
+
 	// Lock memtable
 	k4.memtableLock.Lock()
 	defer k4.memtableLock.Unlock()
@@ -1385,8 +1390,20 @@ func (k4 *K4) Delete(key []byte) error {
 		return fmt.Errorf("key cannot be nil")
 	}
 
+	// Lock memtable
+	k4.memtableLock.Lock()
+	defer k4.memtableLock.Unlock()
+
 	// We simply put a tombstone value for the key
-	return k4.Put(key, []byte(TOMBSTONE_VALUE), nil)
+	k4.memtable.Insert(key, []byte(TOMBSTONE_VALUE), nil)
+
+	// Append operation to WAL queue
+	err := k4.appendToWALQueue(DELETE, key, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // NGet gets a key from K4 and returns a map of key-value pairs
