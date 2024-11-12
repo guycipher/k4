@@ -41,7 +41,7 @@ import (
 const PAGE_SIZE = 1024                     // Page size
 const HEADER_SIZE = 16                     // next (overflowed)
 const SYNC_TICK_INTERVAL = 1 * time.Second // tick interval for syncing the file
-const SYNC_ESCALATION = 1 * time.Minute    // if the file is not synced in 1 minute, sync it
+const SYNC_ESCALATION = 30 * time.Second   // if the file is not synced 30 seconds, sync it
 const WRITE_THRESHOLD = 24576              // every 24576 writes, sync the file
 
 // Pager manages pages in a file
