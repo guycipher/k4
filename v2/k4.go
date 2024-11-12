@@ -32,11 +32,12 @@ package k4
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"github.com/guycipher/k4/compressor"
+	"github.com/guycipher/k4/pager"
 	"github.com/guycipher/k4/v2/cuckoofilter"
-	"github.com/guycipher/k4/v2/pager"
 	"github.com/guycipher/k4/v2/skiplist"
 	"log"
 	"os"
@@ -124,7 +125,8 @@ type WALIterator struct {
 	compressed  bool         // whether the wal is compressed; this gets set when the sstable is created, the configuration is passed from K4
 }
 
-// KV mainly used for serialization
+// KV mainly used for storage of key value pairs on disk pages
+// we code the KV into a binary format before writing to disk
 type KV struct {
 	Key   []byte     // Binary array of key
 	Value []byte     // Binary array of keys value
@@ -335,7 +337,7 @@ func (k4 *K4) backgroundWalWriter() {
 			// Escalate what hasn't been written to the wal
 			k4.walQueueLock.Lock() // lock the wal queue
 			for _, op := range k4.walQueue {
-				data := serializeOp(op.Op, op.Key, op.Value)
+				data := encodeOp(op.Op, op.Key, op.Value)
 				_, err := k4.wal.Write(data)
 				if err != nil {
 					k4.printLog(fmt.Sprintf("Failed to write to WAL: %v", err))
@@ -355,8 +357,8 @@ func (k4 *K4) backgroundWalWriter() {
 				k4.walQueue = k4.walQueue[1:] // Remove the first operation
 				k4.walQueueLock.Unlock()      // Unlock the wal queue
 
-				// Serialize operation
-				data := serializeOp(op.Op, op.Key, op.Value)
+				// Encode operation
+				data := encodeOp(op.Op, op.Key, op.Value)
 
 				// Write to WAL
 				_, err := k4.wal.Write(data)
@@ -372,11 +374,8 @@ func (k4 *K4) backgroundWalWriter() {
 	}
 }
 
-// serializeOp serializes an operation
-func serializeOp(op OPR_CODE, key, value []byte) []byte {
-	var buf bytes.Buffer // create a buffer
-
-	enc := gob.NewEncoder(&buf) // create a new encoder with the buffer
+// encodeOp encodes an operation into a binary format
+func encodeOp(op OPR_CODE, key, value []byte) []byte {
 
 	// create an operation struct and initialize it
 	operation := Operation{
@@ -385,37 +384,107 @@ func serializeOp(op OPR_CODE, key, value []byte) []byte {
 		Value: value,
 	}
 
-	// encode the operation
-	err := enc.Encode(&operation)
-	if err != nil {
+	var buf bytes.Buffer
+	// Encode Op as an int32 (4 bytes)
+	if err := binary.Write(&buf, binary.LittleEndian, int32(operation.Op)); err != nil {
 		return nil
 	}
 
-	return buf.Bytes() // return the encoded bytes
+	// Encode the length of the Key and the Key itself
+	if err := binary.Write(&buf, binary.LittleEndian, int32(len(operation.Key))); err != nil {
+		return nil
+	}
+	if err := binary.Write(&buf, binary.LittleEndian, operation.Key); err != nil {
+		return nil
+	}
+
+	// Encode the length of the Value and the Value itself
+	if err := binary.Write(&buf, binary.LittleEndian, int32(len(operation.Value))); err != nil {
+		return nil
+	}
+	if err := binary.Write(&buf, binary.LittleEndian, operation.Value); err != nil {
+		return nil
+	}
+
+	if operation.Rollback != nil {
+		if err := binary.Write(&buf, binary.LittleEndian, byte(1)); err != nil {
+			return nil
+		}
+		// Recursively encode the rollback operation
+		rollbackData := encodeOp(operation.Rollback.Op, operation.Rollback.Key, operation.Rollback.Value)
+		buf.Write(rollbackData)
+	} else {
+		// No rollback operation
+		if err := binary.Write(&buf, binary.LittleEndian, byte(0)); err != nil {
+			return nil
+		}
+	}
+
+	return buf.Bytes()
 
 }
 
-// deserializeOp deserializes an operation
-func deserializeOp(data []byte) (OPR_CODE, []byte, []byte, error) {
+// decodeOp decodes an encoded operation
+func decodeOp(data []byte) (OPR_CODE, []byte, []byte, error) {
+	buf := bytes.NewReader(data)
+	var op Operation
 
-	operation := Operation{} // The operation to be deserialized
+	// Decode Op (int32)
+	var opCode int32
+	if err := binary.Read(buf, binary.LittleEndian, &opCode); err != nil {
+		return 0, nil, nil, err
+	}
+	op.Op = OPR_CODE(opCode)
 
-	dec := gob.NewDecoder(bytes.NewReader(data)) // Create a new decoder
-
-	err := dec.Decode(&operation) // Decode the operation
-	if err != nil {
+	// Decode Key length and the Key
+	var keyLen int32
+	if err := binary.Read(buf, binary.LittleEndian, &keyLen); err != nil {
+		return 0, nil, nil, err
+	}
+	op.Key = make([]byte, keyLen)
+	if err := binary.Read(buf, binary.LittleEndian, &op.Key); err != nil {
 		return 0, nil, nil, err
 	}
 
-	return operation.Op, operation.Key, operation.Value, nil
+	// Decode Value length and the Value
+	var valueLen int32
+	if err := binary.Read(buf, binary.LittleEndian, &valueLen); err != nil {
+		return 0, nil, nil, err
+	}
+	op.Value = make([]byte, valueLen)
+	if err := binary.Read(buf, binary.LittleEndian, &op.Value); err != nil {
+		return 0, nil, nil, err
+	}
+
+	// Decode Rollback pointer:
+	var hasRollback byte
+	if err := binary.Read(buf, binary.LittleEndian, &hasRollback); err != nil {
+		return 0, nil, nil, err
+	}
+	if hasRollback == 1 {
+		// Recursively decode the rollback operation
+		rollbackData := make([]byte, buf.Len())
+		if _, err := buf.Read(rollbackData); err != nil {
+			return 0, nil, nil, err
+		}
+		rollbackOp, rollbackKey, rollbackValue, err := decodeOp(rollbackData)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+
+		op.Rollback = &Operation{
+			Op:    rollbackOp,
+			Key:   rollbackKey,
+			Value: rollbackValue,
+		}
+
+	}
+
+	return op.Op, op.Key, op.Value, nil
 }
 
-// serializeKv serializes a key-value pair
-func serializeKv(key, value []byte, ttl *time.Time) []byte {
-	var buf bytes.Buffer // create a buffer
-
-	enc := gob.NewEncoder(&buf) // create a new encoder with the buffer
-
+// encodeKv encodes a key-value pair into a binary format
+func encodeKv(key, value []byte, ttl *time.Time) []byte {
 	// create a key value pair struct
 	kv := KV{
 		Key:   key,
@@ -423,28 +492,89 @@ func serializeKv(key, value []byte, ttl *time.Time) []byte {
 		TTL:   ttl,
 	}
 
-	// encode the key value pair
-	err := enc.Encode(kv)
-	if err != nil {
+	var buf bytes.Buffer
+
+	// Encode the length of the Key and the Key itself
+	if err := binary.Write(&buf, binary.LittleEndian, int32(len(kv.Key))); err != nil {
+		return nil
+	}
+	if err := binary.Write(&buf, binary.LittleEndian, kv.Key); err != nil {
 		return nil
 	}
 
-	return buf.Bytes() // return the bytes
+	// Encode the length of the Value and the Value itself
+	if err := binary.Write(&buf, binary.LittleEndian, int32(len(kv.Value))); err != nil {
+		return nil
+	}
+	if err := binary.Write(&buf, binary.LittleEndian, kv.Value); err != nil {
+		return nil
+	}
+
+	// Encode whether TTL is present
+	if kv.TTL != nil {
+		if err := binary.Write(&buf, binary.LittleEndian, byte(1)); err != nil {
+			return nil
+		}
+		// Encode the TTL value
+		if err := binary.Write(&buf, binary.LittleEndian, kv.TTL.UnixNano()); err != nil {
+			return nil
+		}
+	} else {
+		if err := binary.Write(&buf, binary.LittleEndian, byte(0)); err != nil {
+			return nil
+		}
+	}
+
+	return buf.Bytes()
 }
 
-// deserializeKv deserializes a key-value pair
-func deserializeKv(data []byte) (key, value []byte, ttl *time.Time, err error) {
-	kv := KV{} // The key value pair to be deserialized
+// decodeKV decodes a key-value pair
+func decodeKV(data []byte) (key, value []byte, ttl *time.Time, err error) {
+	buf := bytes.NewReader(data)
+	var kv KV
 
-	dec := gob.NewDecoder(bytes.NewReader(data)) // Create a new decoder
+	// Decode the length of the Key and the Key itself
+	var keyLen int32
+	if err := binary.Read(buf, binary.LittleEndian, &keyLen); err != nil {
+		return nil, nil, nil, err
+	}
+	if keyLen < 0 || keyLen > int32(len(data)) {
+		return nil, nil, nil, fmt.Errorf("invalid key length: %d", keyLen)
+	}
+	kv.Key = make([]byte, keyLen)
+	if err := binary.Read(buf, binary.LittleEndian, &kv.Key); err != nil {
+		return nil, nil, nil, err
+	}
 
-	err = dec.Decode(&kv) // Decode the key value pair
-	if err != nil {
-		return nil, nil, kv.TTL, err
+	// Decode the length of the Value and the Value itself
+	var valueLen int32
+	if err := binary.Read(buf, binary.LittleEndian, &valueLen); err != nil {
+		return nil, nil, nil, err
+	}
+	if valueLen < 0 || valueLen > int32(len(data)) {
+		return nil, nil, nil, fmt.Errorf("invalid value length: %d", valueLen)
+	}
+	kv.Value = make([]byte, valueLen)
+	if err := binary.Read(buf, binary.LittleEndian, &kv.Value); err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Decode whether TTL is present
+	var hasTTL byte
+	if err := binary.Read(buf, binary.LittleEndian, &hasTTL); err != nil {
+		return nil, nil, nil, err
+	}
+	if hasTTL == 1 {
+		// Decode the TTL value
+		var ttl int64
+		if err := binary.Read(buf, binary.LittleEndian, &ttl); err != nil {
+			return nil, nil, nil, err
+		}
+		t := time.Unix(0, ttl)
+		kv.TTL = &t
 	}
 
 	return kv.Key, kv.Value, kv.TTL, nil
-
 }
 
 // loadSSTables loads SSTables from the directory
@@ -545,15 +675,15 @@ func (k4 *K4) flushMemtable(memtable *skiplist.SkipList) error {
 			}
 		}
 
-		// Serialize key-value pair
+		// Encode key-value pair
 		var data []byte
 
 		if ttl != nil {
 			expiry := time.Now().Add(*ttl)
-			data = serializeKv(key, value, &expiry)
+			data = encodeKv(key, value, &expiry)
 		} else {
 
-			data = serializeKv(key, value, nil)
+			data = encodeKv(key, value, nil)
 		}
 
 		// Write to SSTable
@@ -667,8 +797,8 @@ func (it *SSTableIterator) current() ([]byte, []byte, *time.Time) {
 		return nil, nil, nil
 	}
 
-	// Deserialize key-value pair
-	key, value, ttl, err := deserializeKv(data)
+	// DEcode key-value pair
+	key, value, ttl, err := decodeKV(data)
 	if err != nil {
 
 		return nil, nil, ttl
@@ -706,8 +836,8 @@ func (it *SSTableIterator) currentKey() []byte {
 		return nil
 	}
 
-	// Deserialize key-value pair
-	key, value, _, err := deserializeKv(data)
+	// Decode key-value pair
+	key, value, _, err := decodeKV(data)
 	if err != nil {
 		return nil
 	}
@@ -761,8 +891,8 @@ func (it *WALIterator) current() (OPR_CODE, []byte, []byte) {
 		return -1, nil, nil
 	}
 
-	// Deserialize operation
-	op, key, value, err := deserializeOp(data)
+	// Decode operation
+	op, key, value, err := decodeOp(data)
 	if err != nil {
 		return -1, nil, nil
 	}
@@ -782,6 +912,11 @@ func (it *WALIterator) current() (OPR_CODE, []byte, []byte) {
 func (k4 *K4) compact() error {
 	k4.sstablesLock.Lock()         // lock up the sstables to prevent reads while we are compacting
 	defer k4.sstablesLock.Unlock() // defer unlocking the sstables
+
+	// if only 2 sstables, no need to compact
+	if len(k4.sstables) == 2 {
+		return nil
+	}
 
 	k4.printLog("Starting compaction")
 
@@ -848,7 +983,7 @@ func (k4 *K4) compact() error {
 					}
 				}
 
-				data := serializeKv(key, value, ttl)
+				data := encodeKv(key, value, ttl)
 				pgN, err := newSstable.pager.Write(data)
 				if err != nil {
 					k4.printLog(fmt.Sprintf("Failed to write key-value to SSTable: %v", err))
@@ -891,7 +1026,7 @@ func (k4 *K4) compact() error {
 					}
 				}
 
-				data := serializeKv(key, value, ttl)     // serialize key-value pair
+				data := encodeKv(key, value, ttl)        // encode key-value pair into byte array
 				pgN, err := newSstable.pager.Write(data) // write to new sstable
 				if err != nil {
 					k4.printLog(fmt.Sprintf("Failed to write key-value to SSTable: %v", err))
@@ -1324,8 +1459,8 @@ func (sstable *SSTable) get(key []byte, lastPage int64) ([]byte, error) {
 		return nil, err
 	}
 
-	// Deserialize the key value pair
-	k, v, ttl, err := deserializeKv(data)
+	// Decode the key value pair
+	k, v, ttl, err := decodeKV(data)
 	if err != nil {
 		return nil, err
 	}

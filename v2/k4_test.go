@@ -231,9 +231,9 @@ func TestCompressMemtableFlush(t *testing.T) {
 
 func TestCompaction(t *testing.T) {
 	dir := setup(t)
-	defer teardown(dir)
+	//defer teardown(dir)
 
-	k4, err := Open(dir, 12196/4, 1000, true, false)
+	k4, err := Open(dir, 12196/2, 2000, true, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
@@ -242,18 +242,18 @@ func TestCompaction(t *testing.T) {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
 
+		if i == 400 {
+			k4.compact()
+		}
+
 		err = k4.Put(key, value, nil)
 		if err != nil {
 			k4.Close()
 			t.Fatalf("Failed to put key-value: %v", err)
 		}
 
-		if i == 400 {
-			k4.compact()
-
-		}
-
 	}
+	time.Sleep(5 * time.Second) // We wait for flushes to occur
 
 	k4.Close()
 
