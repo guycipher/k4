@@ -139,9 +139,12 @@ func TestMemtableFlush(t *testing.T) {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
 
+	totalBytes := 0
+
 	for i := 0; i < 100; i++ {
 		key := []byte("key" + fmt.Sprintf("%d", i))
 		value := []byte("value" + fmt.Sprintf("%d", i))
+		totalBytes += len(key) + len(value)
 
 		err = k4.Put(key, value, nil)
 		if err != nil {
@@ -375,7 +378,7 @@ func TestCompaction2(t *testing.T) {
 	dir := setup(t)
 	defer teardown(dir)
 
-	k4, err := Open(dir, 950*2, 1000, true, false)
+	k4, err := Open(dir, 950*2, 2000, true, false)
 	if err != nil {
 		t.Fatalf("Failed to open K4: %v", err)
 	}
