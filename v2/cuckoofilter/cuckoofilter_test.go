@@ -96,3 +96,25 @@ func TestSerializeDeserialize(t *testing.T) {
 		t.Errorf("expected Lookup to find the key with prefix %d, got %d", prefix, p)
 	}
 }
+
+func TestCuckooFilterSizeFor10MillionEntries(t *testing.T) {
+	cf := NewCuckooFilter()
+	numEntries := 10000000
+
+	for i := 0; i < numEntries; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		prefix := int64(i)
+		cf.Insert(prefix, key)
+	}
+
+	fmt.Printf("Number of buckets: %d\n", len(cf.Buckets))
+	fmt.Printf("Number of entries: %d\n", numEntries)
+
+	// serialize and deserialize to check for errors
+	data, err := cf.Serialize()
+	if err != nil {
+		t.Fatalf("expected no error during serialization, got %v", err)
+	}
+
+	fmt.Println(len(data))
+}

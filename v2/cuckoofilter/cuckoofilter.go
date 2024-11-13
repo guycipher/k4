@@ -38,9 +38,46 @@ import (
 
 // Cuckoo Filter Configuration
 const (
-	initialFilterSize = 100 // initial number of buckets in the filter
-	maxBucketSize     = 4   // max number of elements per bucket
+	initialFilterSize = 1000 // initial number of buckets in the filter
+	maxBucketSize     = 8    // max number of elements per bucket
 )
+
+/*
+	cf := NewCuckooFilter()
+	numEntries := 10000000 // 10 million entries
+
+	for i := 0; i < numEntries; i++ {
+		key := []byte(fmt.Sprintf("key%d", i))
+		prefix := int64(i)
+		cf.Insert(prefix, key)
+	}
+	...
+
+initialFilterSize = 10000
+maxBucketSize     = 4
+Number of buckets: 163840000
+Number of entries: 10000000
+Encoded size 375340330
+
+initialFilterSize = 1000
+maxBucketSize     = 4
+Number of buckets: 131072000
+Number of entries: 10000000
+Encoded size 342572346
+
+initialFilterSize = 100
+maxBucketSize     = 4
+Number of buckets: 209715200
+Number of entries: 10000000
+Encoded size 421215578
+
+initialFilterSize = 1000
+maxBucketSize     = 8
+Number of buckets: 65536000
+Number of entries: 10000000
+277036394 = 264.2 megabytes
+
+*/
 
 // CuckooFilter structure
 type CuckooFilter struct {
